@@ -10,18 +10,18 @@ import os
 import re
 
 # ==========================================
-# 1. 頁面配置與「高對比」視覺優化
+# 1. 頁面配置與高對比視覺優化
 # ==========================================
 st.set_page_config(layout="wide", page_title="全球資產動態平衡系統", page_icon="🏦")
 
 st.markdown("""
     <style>
-    /* 全域文字與卡片高對比設定 */
+    /* 全域卡片與區塊高對比設定 */
     .market-header { padding: 15px; border-radius: 8px; font-weight: bold; margin-bottom: 15px; font-size: 1.2rem; color: #ffffff !important; }
     .tw-market { background-color: #1e293b; border-left: 8px solid #00ffcc; }
     .us-market { background-color: #1e293b; border-left: 8px solid #f97316; }
     
-    /* 確保輸入框與標籤在淺色/深色模式都能看清楚 */
+    /* 確保所有模式下的數據與文字都具備高可讀性 */
     label, .stMarkdown p { font-weight: 500; }
     div[data-testid="stMetricValue"] { font-weight: 700 !important; }
     </style>
@@ -30,34 +30,33 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 智慧代碼解析引擎 (完美支援 00631L、00981A、中文與上櫃股票)
+# 2. 智慧代碼解析引擎 (精準支援 0050、0052、00631L)
 # ==========================================
 def resolve_ticker(user_input):
-    user_input = user_input.strip()
+    user_input = user_input.strip().upper()
     if not user_input: return ""
+    if user_input.startswith("^"): return user_input
+    if user_input.endswith(".TW") or user_input.endswith(".TWO"): return user_input
     
-    user_input_upper = user_input.upper()
-    
-    # 規則 1: 如果是大盤指數（以 ^ 開頭），直接大寫回傳
-    if user_input_upper.startswith("^"):
-        return user_input_upper
-        
-    # 規則 2: 只要開頭是數字（純數字如 2330、帶字母如 00631L）或是含有中文名稱
-    if user_input_upper[0].isdigit() or re.search(r'[\u4e00-\u9fff]', user_input):
+    # 智慧判斷台股：符合純數字或數字+字母（如 2330, 0050, 0052, 00631L, 00981A）
+    if re.match(r'^\d+[A-Z]?$', user_input):
         try:
-            # 優先透過 Yahoo 搜尋引擎尋找精準代碼 (能自動識別上市 .TW 或上櫃 .TWO)
-            search_result = yf.Search(user_input_upper, max_results=1).quotes
-            if search_result:
-                return search_result[0]['symbol']
+            search_result = yf.Search(user_input, max_results=3).quotes
+            for q in search_result:
+                sym = q['symbol'].upper()
+                if sym.startswith(user_input) and (sym.endswith(".TW") or sym.endswith(".TWO")):
+                    return sym
+        except: pass
+        return f"{user_input}.TW"
+        
+    # 處理中文名稱搜尋
+    if re.search(r'[\u4e00-\u9fff]', user_input):
+        try:
+            search_result = yf.Search(user_input, max_results=1).quotes
+            if search_result: return search_result[0]['symbol']
         except: pass
         
-        # 保底補丁：若 Yahoo 搜尋失效且開頭為數字，且無後綴，則自動補上 .TW
-        if user_input_upper[0].isdigit():
-            if not (user_input_upper.endswith(".TW") or user_input_upper.endswith(".TWO")):
-                return f"{user_input_upper}.TW"
-                
-    # 規則 3: 純美股代碼（如 AAPL, QQQ, TMF），轉大寫直接回傳
-    return user_input_upper
+    return user_input
 
 # ==========================================
 # 3. 核心功能：存檔機制與安全數據獲取
@@ -85,7 +84,6 @@ def fetch_realtime_data(ticker):
     except: return None
     return None
 
-# 獲取當前匯率
 current_rate = fetch_realtime_data("TWD=X") or 32.5
 data = load_portfolio()
 
@@ -102,7 +100,6 @@ app_mode = st.sidebar.radio(
 )
 st.sidebar.markdown("---")
 
-# 當處於 K 線分析時，動態顯示大盤快選單
 if app_mode == "🔍 全球 K 線分析":
     st.sidebar.header("🌍 大盤速查")
     market_choice = st.sidebar.radio(
@@ -117,16 +114,14 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     num_assets = st.sidebar.number_input("🔢 全球設定標的數量", value=len(data.get("locked_portfolio", [])) or 4, min_value=1)
 
 # ==========================================
-# 5. 主功能：資產動態監控盤
+# 5. 主功能：資產動態監控盤 (納入槓桿倍數計算)
 # ==========================================
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]}儀表板</h1>', unsafe_allow_html=True)
     
-    # 📌 設定區
     with st.expander("⚙️ 點擊展開：編輯全部初始配置與槓桿鎖定 (台美股皆在此編輯)", expanded=(not data["locked_portfolio"])):
-        st.info("💡 智慧輸入提示：台股可直接輸入 `00631L`、`2330` 或 `元大台灣50正2`。系統會自動精準識別上市櫃字尾！")
         cols = st.columns([2, 1.5, 1, 5])
-        cols[0].markdown("**代碼 (免加字尾)**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**槓桿**")
+        cols[0].markdown("**代碼**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**槓桿**")
         
         new_setup = []
         total_pct = 0
@@ -134,9 +129,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             r_cols = st.columns([2, 1.5, 1, 5])
             hist = data["locked_portfolio"][i] if i < len(data["locked_portfolio"]) else {"ticker": "", "target_pct": 0, "leverage": 1}
             
-            # 潔淨化顯示名稱
             display_tk = hist["ticker"].replace(".TWO", "").replace(".TW", "") if (".TW" in hist.get("ticker", "") or ".TWO" in hist.get("ticker", "")) else hist.get("ticker", "")
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 00631L, 2330, QQQ").strip()
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 0050, 6285, QQQ").strip()
             pct = r_cols[1].number_input(f"pct_{i}", 0.0, 100.0, float(hist.get("target_pct", 0)), 5.0, label_visibility="collapsed")
             lev = r_cols[2].number_input(f"lev_{i}", 0.5, 5.0, float(hist.get("leverage", 1.0)), 0.5, label_visibility="collapsed")
             
@@ -149,7 +143,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             else:
                 locked_assets = []
                 error_tickers = []
-                with st.spinner('正在智慧辨識跨國市場代碼並計算股數...'):
+                with st.spinner('正在智慧辨識跨國市場代碼並計算初始股數...'):
                     for item in new_setup:
                         real_ticker = resolve_ticker(item["raw_ticker"])
                         p = fetch_realtime_data(real_ticker)
@@ -170,7 +164,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     st.success("🔒 跨市場初始庫存定格成功！")
                     st.rerun()
 
-    # 📌 監控顯示區
     if data["locked_portfolio"]:
         current_view_data = []
         total_market_val_ntd = 0 
@@ -183,10 +176,12 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     
                     if asset["ticker"].startswith("^"):
                         ret = now_p / asset.get("init_price", now_p)
-                        now_val_ntd = init_funds * (asset["target_pct"] / 100) * ret
+                        # 大盤指數真實曝險市值計算
+                        now_val_ntd = init_funds * (asset["target_pct"] / 100) * ret * asset.get("leverage", 1.0)
                     else:
                         price_ntd = now_p if is_tw else (now_p * current_rate)
-                        now_val_ntd = price_ntd * asset.get("init_shares", 0)
+                        # 個股市值計算 = 基礎價值 * 槓桿倍數 (精確算出開了幾倍槓桿後的真實曝險規模)
+                        now_val_ntd = price_ntd * asset.get("init_shares", 0) * asset.get("leverage", 1.0)
                     
                     total_market_val_ntd += now_val_ntd
                     record = {**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "is_tw": is_tw}
@@ -208,11 +203,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
                 c[0].metric(clean_name, f"{'NTD' if item['is_tw'] else 'USD'} {item['now_p']:.2f}")
                 c[1].write("📊 指數" if item["ticker"].startswith("^") else f"{item.get('init_shares', 0):,} 股")
-                c[2].write(f"{item['target_pct']}% (`{item.get('leverage', 1.0)}x`)")
+                c[2].write(f"目標: {item['target_pct']}% (`{item.get('leverage', 1.0)}x`)")
                 
-                if item['is_tw']: c[3].write(f"NTD {int(item['now_val_ntd']):,}")
-                else: c[3].write(f"市值: NTD {int(item['now_val_ntd']):,}\n(匯率:{current_rate:.2f})")
-                
+                c[3].write(f"槓桿市值: NTD {int(item['now_val_ntd']):,}")
                 c[4].write(f"`真實佔比: {real_pct:.1f}%` \n(偏離: {diff:+.1f}%)")
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}%")
                 else: c[5].success("✅ 完美平衡")
@@ -221,16 +214,16 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         st.markdown("---")
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
-            st.subheader("💰 全球投資組合總結")
-            st.metric("總市值 (NTD)", f"{int(total_market_val_ntd):,}", f"{int(total_market_val_ntd - init_funds):,} 自初始定格")
+            st.subheader("💰 全球槓桿總資產規模總結")
+            st.metric("開槓桿後總曝險市值 (NTD)", f"{int(total_market_val_ntd):,}", f"{int(total_market_val_ntd - init_funds):,} 對比初始本金")
             
             all_assets = []
             for a in data["locked_portfolio"]:
                 p = fetch_realtime_data(a["ticker"])
                 if p and p > 0:
                     is_tw = ".TW" in a["ticker"] or ".TWO" in a["ticker"] or a["ticker"].startswith("^")
-                    if a["ticker"].startswith("^"): val = init_funds * (a["target_pct"] / 100) * (p / a.get("init_price", p))
-                    else: val = (p if is_tw else p * current_rate) * a.get("init_shares", 0)
+                    if a["ticker"].startswith("^"): val = init_funds * (a["target_pct"] / 100) * (p / a.get("init_price", p)) * a.get("leverage", 1.0)
+                    else: val = (p if is_tw else p * current_rate) * a.get("init_shares", 0) * a.get("leverage", 1.0)
                     all_assets.append({"tk": a["ticker"].replace('.TWO','').replace('.TW', ''), "val": val, "target": a["target_pct"]})
 
             if all_assets:
@@ -240,12 +233,12 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 
         with footer_cols[1]:
             if all_assets:
-                st.subheader("📊 全球權重偏差分析")
+                st.subheader("📊 全球真實權重與目標權重偏差分析")
                 bar_df = pd.DataFrame(all_assets)
                 bar_df['Real'] = bar_df['val'] / bar_df['val'].sum() * 100
                 fig_bar = go.Figure(data=[
-                    go.Bar(name='真實權重', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
-                    go.Bar(name='目標權重', x=bar_df['tk'], y=bar_df['target'], marker_color='#334155')
+                    go.Bar(name='當前開槓桿真實權重', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
+                    go.Bar(name='設定目標權重', x=bar_df['tk'], y=bar_df['target'], marker_color='#334155')
                 ])
                 fig_bar.update_layout(barmode='group', height=350)
                 st.plotly_chart(fig_bar, use_container_width=True)
@@ -265,7 +258,7 @@ elif app_mode == "🔍 全球 K 線分析":
     else: default_ticker = "2330"
     
     if market_choice == "自訂輸入個股":
-        st.info("💡 支援純數字、字母混合或中文（如: `00631L`、`元大台灣50正2`、`AAPL`）")
+        st.info("💡 支援輸入純數字、字母混合或中文（如: `0050`、`00631L`、`台積電`、`AAPL`）")
         raw_ticker_input = st.text_input("輸入欲分析代碼：", default_ticker)
     else:
         raw_ticker_input = default_ticker
