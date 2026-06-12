@@ -79,8 +79,7 @@ def fetch_yield(ticker):
         info = yf.Ticker(ticker).info
         raw_yield = info.get('dividendYield', 0.0)
         return float(raw_yield) * 100 if raw_yield else 0.0
-    except:
-        return 0.0
+    except: return 0.0
 
 # ==========================================
 # 3. 核心功能：獨立存檔機制
@@ -154,7 +153,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業分析面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (該市場總權重應為 100%)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：若想配置備用資金，請在代碼直接輸入 **「現金」** 或 **「CASH」**。殖利率可留空由系統自動檢索。")
+        st.info(f"💡 提示：若想配置備用資金，請在代碼直接輸入 **「現金」** 或 **「CASH」**。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**預估殖利率% (可填0)**")
         
@@ -173,16 +172,16 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
             error_tickers = []
-            with st.spinner('正在解析代碼並啟動智慧背景搜尋模組...'):
+            with st.spinner('正在解析代碼並同步市場數據...'):
                 for item in new_setup:
                     real_ticker = resolve_ticker(item["raw_ticker"])
                     p = fetch_realtime_data(real_ticker)
                     lev = get_leverage(real_ticker)
                     
                     if p and p > 0: 
-                        is_tw = ".TW" in real_ticker or ".TWO" in real_ticker or real_ticker.startswith("^") or real_ticker == "CASH"
+                        # 物理切分：用當前模式決定幣別，而不再用名字盲猜
                         alloc_ntd = init_funds * (item["target_pct"] / 100)
-                        price_ntd = p if is_tw else (p * current_rate)
+                        price_ntd = p if is_tw_mode else (p * current_rate) 
                         shares = int(alloc_ntd / price_ntd) if not real_ticker.startswith("^") else 1
                         
                         auto_yld = fetch_yield(real_ticker)
@@ -201,65 +200,48 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.success(f"🔒 {market_label} 組合分析模型建立成功！")
                 st.rerun()
 
-    # 📌 數據處理與渲染 (解決分母陷阱，將台美總市值完全分開計算)
+    # 📌 數據處理與渲染 (嚴格限定只處理當前分頁的清單)
     current_view_data = []
-    tw_total_market_val, us_total_market_val = 0, 0
-    tw_total_exposure, us_total_exposure = 0, 0
-    tw_dividend, us_dividend = 0, 0
+    local_total_val, local_total_exp, local_dividend = 0, 0, 0
+    target_portfolio = db_data[current_list_key]
     
-    all_assets_list = db_data["tw_portfolio"] + db_data["us_portfolio"]
-    
-    if all_assets_list:
-        with st.spinner("🔄 正在運算最新現金流與估值..."):
-            for asset in all_assets_list:
+    if target_portfolio:
+        with st.spinner(f"🔄 正在運算 {market_label} 最新現金流與估值..."):
+            for asset in target_portfolio:
                 now_p = fetch_realtime_data(asset["ticker"])
                 if now_p and now_p > 0:
-                    is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^") or asset["ticker"] == "CASH"
                     lev = asset.get("leverage", 1.0)
                     
                     if asset["ticker"].startswith("^"):
                         now_val_ntd = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p))
                     else:
-                        price_ntd = now_p if is_tw else (now_p * current_rate)
+                        price_ntd = now_p if is_tw_mode else (now_p * current_rate)
                         now_val_ntd = price_ntd * asset.get("init_shares", 0)
                     
                     exposure_ntd = now_val_ntd * lev
                     div_cash = now_val_ntd * (asset.get("yield_pct", 0) / 100)
                     
-                    record = {**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "div_cash": div_cash, "is_tw": is_tw}
+                    local_total_val += now_val_ntd
+                    local_total_exp += exposure_ntd
+                    local_dividend += div_cash
                     
-                    # 嚴格分流計算總市值分母
-                    if is_tw:
-                        tw_total_market_val += now_val_ntd
-                        tw_total_exposure += exposure_ntd
-                        tw_dividend += div_cash
-                        if is_tw_mode: current_view_data.append(record)
-                    else:
-                        us_total_market_val += now_val_ntd
-                        us_total_exposure += exposure_ntd
-                        us_dividend += div_cash
-                        if not is_tw_mode: current_view_data.append(record)
-
-        # 決定當前頁面的「本地總資金分母」
-        local_total_val = tw_total_market_val if is_tw_mode else us_total_market_val
-        local_total_exp = tw_total_exposure if is_tw_mode else us_total_exposure
-        local_dividend = tw_dividend if is_tw_mode else us_dividend
+                    current_view_data.append({**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "div_cash": div_cash})
 
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
             for item in current_view_data:
                 c = st.columns([1.5, 1.5, 1.2, 1.5, 1.5, 2.6])
-                
-                # 真實佔比：使用 "當前市場的總市值" 確保百分比邏輯正確
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
                 diff = real_pct - item["target_pct"]
                 
                 if item["ticker"] == "CASH":
-                    c[0].metric("💵 現金 (TWD)", "NTD 1.00")
-                    c[1].write(f"持有額:\n{int(item.get('init_shares', 0)):,} 元")
+                    currency_str = "TWD" if is_tw_mode else "USD"
+                    unit_str = "元" if is_tw_mode else "美元"
+                    c[0].metric(f"💵 現金 ({currency_str})", f"{currency_str} 1.00")
+                    c[1].write(f"持有額:\n{int(item.get('init_shares', 0)):,} {unit_str}")
                 else:
                     clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
-                    c[0].metric(clean_name, f"{'NTD' if item['is_tw'] else 'USD'} {item['now_p']:.2f}")
+                    c[0].metric(clean_name, f"{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}")
                     c[1].write("📊 指數追蹤" if item["ticker"].startswith("^") else f"持有股數:\n{item.get('init_shares', 0):,} 股")
                 
                 c[2].write(f"目標: {item['target_pct']}%\n殖利率: {item.get('yield_pct', 0):.1f}%")
@@ -269,7 +251,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(真實佔比: {real_pct:.1f}%)")
                 else: c[5].success(f"✅ 平衡區間\n(真實佔比: {real_pct:.1f}%)")
 
-        # 📌 底部結算與圖表 (改為顯示當前單一市場的視角)
+        # 📌 底部結算與圖表
         st.markdown("---")
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
@@ -308,12 +290,20 @@ elif app_mode == "🎯 進階：質押與觀察清單":
     st.markdown('<div class="market-header adv-market">🎯 長期投資風險與目標控管中心</div>', unsafe_allow_html=True)
     
     total_val_for_pledge, annual_div_for_pledge = 0, 0
-    for asset in (db_data["tw_portfolio"] + db_data["us_portfolio"]):
+    # 結算台股
+    for asset in db_data["tw_portfolio"]:
         now_p = fetch_realtime_data(asset["ticker"])
         if now_p and now_p > 0:
-            is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^") or asset["ticker"] == "CASH"
             if asset["ticker"].startswith("^"): val = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p))
-            else: val = (now_p if is_tw else now_p * current_rate) * asset.get("init_shares", 0)
+            else: val = now_p * asset.get("init_shares", 0) # 台股不乘匯率
+            total_val_for_pledge += val
+            annual_div_for_pledge += val * (asset.get("yield_pct", 0) / 100)
+    # 結算美股
+    for asset in db_data["us_portfolio"]:
+        now_p = fetch_realtime_data(asset["ticker"])
+        if now_p and now_p > 0:
+            if asset["ticker"].startswith("^"): val = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p))
+            else: val = (now_p * current_rate) * asset.get("init_shares", 0) # 美股乘匯率
             total_val_for_pledge += val
             annual_div_for_pledge += val * (asset.get("yield_pct", 0) / 100)
 
