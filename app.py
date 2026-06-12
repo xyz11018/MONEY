@@ -42,6 +42,9 @@ DB_FILE = "portfolio_db.json"
 def resolve_ticker(user_input):
     t = user_input.strip().upper()
     if not t: return ""
+    # 支援現金輸入
+    if t in ["現金", "CASH"]: return "CASH"
+    
     if t.startswith("^") or t.endswith(".TW") or t.endswith(".TWO"): return t
     if re.match(r'^\d+[A-Z]?$', t):
         test_tw = yf.download(f"{t}.TW", period="1d", progress=False)
@@ -57,6 +60,7 @@ def resolve_ticker(user_input):
     return t
 
 def get_leverage(ticker):
+    if ticker == "CASH": return 1.0
     t = ticker.upper()
     if t.endswith("L.TW") or t.endswith("L.TWO"): return 2.0
     if t.endswith("R.TW") or t.endswith("R.TWO"): return -1.0
@@ -70,31 +74,18 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 💥 重磅：智慧數據自動搜尋引擎 (產出產業與殖利率)
+# 3. 背景智慧數據搜尋引擎 (僅保留殖利率)
 # ==========================================
 @st.cache_data(ttl=86400)
-def fetch_sector_and_yield(ticker):
-    """於後台智慧檢索標的的產業別與殖利率，並自動中文化"""
+def fetch_yield(ticker):
+    """於後台智慧檢索標的的殖利率"""
+    if ticker == "CASH": return 0.0
     try:
-        t_obj = yf.Ticker(ticker)
-        info = t_obj.info
-        
-        # 讀取英制產業別並自動對應中文
-        raw_sector = info.get('sector', '')
-        sector_map = {
-            "Technology": "科技產業", "Financial Services": "金融服務", "Healthcare": "醫療保健",
-            "Consumer Cyclical": "週期消費", "Industrials": "工業製造", "Communication Services": "通訊服務",
-            "Consumer Defensive": "防禦消費", "Energy": "傳統能源", "Real Estate": "房地產", "Utilities": "公用事業"
-        }
-        clean_sector = sector_map.get(raw_sector, raw_sector if raw_sector else "")
-        
-        # 讀取殖利率 (Yahoo 格式為 0.045 代表 4.5%)
+        info = yf.Ticker(ticker).info
         raw_yield = info.get('dividendYield', 0.0)
-        clean_yield = float(raw_yield) * 100 if raw_yield else 0.0
-        
-        return clean_sector, clean_yield
+        return float(raw_yield) * 100 if raw_yield else 0.0
     except:
-        return "", 0.0
+        return 0.0
 
 # ==========================================
 # 4. 核心功能：獨立存檔機制
@@ -121,6 +112,7 @@ def save_portfolio(data):
 
 @st.cache_data(ttl=3600)
 def fetch_realtime_data(ticker):
+    if ticker == "CASH": return 1.0 # 現金價值恆定為 1
     try:
         data = yf.download(ticker, period="5d", progress=False)
         if not data.empty:
@@ -166,23 +158,22 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業分析面板</h1>', unsafe_allow_html=True)
     
-    with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (支援背景自動偵測數據)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 智慧升級：若您不知道產業與殖利率，**直接留空或寫 0 即可**。點擊下方鎖定按鈕後，系統會在背景自動幫您檢索補齊！")
-        cols = st.columns([1.5, 1, 1.5, 1])
-        cols[0].markdown("**代碼**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**產業分類 (可留空)**"); cols[3].markdown("**殖利率% (可填0)**")
+    with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (支援現金部位)", expanded=(not db_data[current_list_key])):
+        st.info(f"💡 提示：若想配置備用資金，請在代碼欄位直接輸入 **「現金」** 或 **「CASH」**。殖利率可留空由系統自動檢索。")
+        cols = st.columns([2, 2, 2])
+        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**預估殖利率% (可填0)**")
         
         new_setup = []
         for i in range(int(num_assets)):
-            r_cols = st.columns([1.5, 1, 1.5, 1])
-            hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "target_pct": 0, "sector": "", "yield_pct": 0.0}
+            r_cols = st.columns([2, 2, 2])
+            hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "target_pct": 0, "yield_pct": 0.0}
             
             display_tk = hist["ticker"].replace(".TWO", "").replace(".TW", "") if (".TW" in hist.get("ticker", "") or ".TWO" in hist.get("ticker", "")) else hist.get("ticker", "")
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼").strip()
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼 或 現金").strip()
             pct = r_cols[1].number_input(f"pct_{i}", 0.0, 100.0, float(hist.get("target_pct", 0)), 5.0, label_visibility="collapsed")
-            sec = r_cols[2].text_input(f"sec_{i}", hist.get("sector", ""), label_visibility="collapsed", placeholder="留空則由系統偵測")
-            yld = r_cols[3].number_input(f"yld_{i}", 0.0, 30.0, float(hist.get("yield_pct", 0.0)), 0.5, label_visibility="collapsed")
+            yld = r_cols[2].number_input(f"yld_{i}", 0.0, 30.0, float(hist.get("yield_pct", 0.0)), 0.5, label_visibility="collapsed")
             
-            if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "sector": sec, "yield_pct": yld})
+            if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "yield_pct": yld})
         
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
@@ -194,19 +185,18 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     lev = get_leverage(real_ticker)
                     
                     if p and p > 0: 
-                        is_tw = ".TW" in real_ticker or ".TWO" in real_ticker or real_ticker.startswith("^")
+                        # 把 CASH 歸類為台幣計算
+                        is_tw = ".TW" in real_ticker or ".TWO" in real_ticker or real_ticker.startswith("^") or real_ticker == "CASH"
                         alloc_ntd = init_funds * (item["target_pct"] / 100)
                         price_ntd = p if is_tw else (p * current_rate)
                         shares = int(alloc_ntd / price_ntd) if not real_ticker.startswith("^") else 1
                         
-                        # 核心功能：若使用者留空或寫 0，觸發背景智慧檢索
-                        auto_sec, auto_yld = fetch_sector_and_yield(real_ticker)
-                        final_sector = item["sector"] if item["sector"] else (auto_sec if auto_sec else "全球資產")
+                        auto_yld = fetch_yield(real_ticker)
                         final_yield = item["yield_pct"] if item["yield_pct"] > 0 else auto_yld
                         
                         locked_assets.append({
                             "ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, 
-                            "init_shares": shares, "init_price": p, "sector": final_sector, "yield_pct": final_yield
+                            "init_shares": shares, "init_price": p, "yield_pct": final_yield
                         })
                     else: error_tickers.append(item["raw_ticker"])
             
@@ -227,7 +217,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             for asset in all_assets_list:
                 now_p = fetch_realtime_data(asset["ticker"])
                 if now_p and now_p > 0:
-                    is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^")
+                    is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^") or asset["ticker"] == "CASH"
                     lev = asset.get("leverage", 1.0)
                     
                     if asset["ticker"].startswith("^"):
@@ -250,33 +240,29 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
             for item in current_view_data:
-                c = st.columns([1.5, 1.2, 1.2, 1.5, 2, 2.6])
+                c = st.columns([1.5, 1.5, 1.2, 1.5, 1.5, 2.6])
                 real_pct = (item["now_val_ntd"] / total_market_val_ntd * 100) if total_market_val_ntd > 0 else 0
                 diff = real_pct - item["target_pct"]
                 
-                clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
-                c[0].metric(clean_name, f"{'NTD' if item['is_tw'] else 'USD'} {item['now_p']:.2f}")
-                c[1].write(f"板塊: `{item.get('sector', '全球資產')}`\n殖利率: {item.get('yield_pct', 0):.1f}%")
-                c[2].write(f"目標: {item['target_pct']}%")
-                c[3].write(f"市值: NTD {int(item['now_val_ntd']):,}")
-                c[4].write(f"系統偵測: **{item.get('leverage', 1.0)}x**槓桿\n曝險部位: {int(item['exposure_ntd']):,}")
+                if item["ticker"] == "CASH":
+                    c[0].metric("💵 現金 (TWD)", "NTD 1.00")
+                    c[1].write(f"持有額:\n{int(item.get('init_shares', 0)):,} 元")
+                else:
+                    clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
+                    c[0].metric(clean_name, f"{'NTD' if item['is_tw'] else 'USD'} {item['now_p']:.2f}")
+                    c[1].write("📊 指數追蹤" if item["ticker"].startswith("^") else f"持有股數:\n{item.get('init_shares', 0):,} 股")
+                
+                c[2].write(f"目標: {item['target_pct']}%\n殖利率: {item.get('yield_pct', 0):.1f}%")
+                c[3].write(f"市值:\nNTD {int(item['now_val_ntd']):,}")
+                c[4].write(f"槓桿: **{item.get('leverage', 1.0)}x**\n曝險: {int(item['exposure_ntd']):,}")
                 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(佔比: {real_pct:.1f}%)")
                 else: c[5].success(f"✅ 平衡區間\n(佔比: {real_pct:.1f}%)")
 
-        # 📌 圖表分析區
+        # 📌 底部結算與圖表
         st.markdown("---")
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
-            st.subheader("📊 產業板塊曝險分析")
-            if current_view_data:
-                sector_df = pd.DataFrame([{"sec": r.get("sector", "全球資產"), "val": r["now_val_ntd"]} for r in current_view_data])
-                sector_grouped = sector_df.groupby("sec").sum().reset_index()
-                fig_sec = px.pie(sector_grouped, values='val', names='sec', hole=0.4, color_discrete_sequence=px.colors.qualitative.Prism)
-                fig_sec.update_layout(margin=dict(t=10, b=0, l=0, r=0), template="plotly_dark")
-                st.plotly_chart(fig_sec, use_container_width=True)
-                
-        with footer_cols[1]:
             st.subheader("💰 組合綜合指標總結")
             overall_leverage = total_exposure_val_ntd / total_market_val_ntd if total_market_val_ntd > 0 else 1.0
             
@@ -288,6 +274,23 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             sc3.metric("整體槓桿水位", f"{overall_leverage:.2f} 倍")
             sc4.metric("預估年被動收入 (NTD)", f"{int(expected_annual_dividend):,}")
 
+            if current_view_data:
+                pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
+                fig_pie = px.pie(pie_df, values='val', names='tk', hole=0.4, title=f"{market_label}資產分佈", color_discrete_sequence=px.colors.qualitative.Prism)
+                fig_pie.update_layout(margin=dict(t=30, b=0, l=0, r=0), template="plotly_dark")
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+        with footer_cols[1]:
+            if current_view_data:
+                st.subheader("📊 權重偏差分析")
+                bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/total_market_val_ntd*100), "Target": r["target_pct"]} for r in current_view_data])
+                fig_bar = go.Figure(data=[
+                    go.Bar(name='真實權重', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
+                    go.Bar(name='目標權重', x=bar_df['tk'], y=bar_df['Target'], marker_color='#334155')
+                ])
+                fig_bar.update_layout(barmode='group', height=400, margin=dict(t=30, b=0, l=0, r=0), template="plotly_dark")
+                st.plotly_chart(fig_bar, use_container_width=True)
+
 # ==========================================
 # 7. 分頁：進階質押與觀察清單
 # ==========================================
@@ -298,8 +301,9 @@ elif app_mode == "🎯 進階：質押與觀察清單":
     for asset in (db_data["tw_portfolio"] + db_data["us_portfolio"]):
         now_p = fetch_realtime_data(asset["ticker"])
         if now_p and now_p > 0:
-            is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^")
-            val = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p)) if asset["ticker"].startswith("^") else (now_p if is_tw else now_p * current_rate) * asset.get("init_shares", 0)
+            is_tw = ".TW" in asset["ticker"] or ".TWO" in asset["ticker"] or asset["ticker"].startswith("^") or asset["ticker"] == "CASH"
+            if asset["ticker"].startswith("^"): val = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p))
+            else: val = (now_p if is_tw else now_p * current_rate) * asset.get("init_shares", 0)
             total_val_for_pledge += val
             annual_div_for_pledge += val * (asset.get("yield_pct", 0) / 100)
 
@@ -339,7 +343,7 @@ elif app_mode == "🎯 進階：質押與觀察清單":
             if real_tk:
                 db_data["watchlist"].append({"ticker": real_tk, "target_price": new_tp})
                 save_portfolio(db_data)
-                st.st.rerun()
+                st.rerun()
 
         st.markdown("---")
         wl_data = []
@@ -384,6 +388,8 @@ elif app_mode == "🔍 全球 K 線分析":
                     df_k['MA200'] = df_k['Close'].rolling(window=200).mean()
                     
                     clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
+                    st.subheader(f"目前顯示標的：{clean_title}")
+                    
                     fig_k = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
                     fig_k.add_trace(go.Candlestick(x=df_k.index, open=df_k['Open'], high=df_k['High'], low=df_k['Low'], close=df_k['Close'], name="K線"), row=1, col=1)
                     fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA5'], mode='lines', name='MA5 (週線)', line=dict(color='#ff9900', width=1.5)), row=1, col=1)
