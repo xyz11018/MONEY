@@ -101,6 +101,7 @@ if app_mode == "📊 初始定格與每日波動再平衡盤":
             if st.session_state.locked_portfolio and i < len(st.session_state.locked_portfolio):
                 d_tk = st.session_state.locked_portfolio[i]["ticker"]
                 d_pct = st.session_state.locked_portfolio[i]["target_pct"]
+                # 防呆：舊資料若無 leverage，預設為 1.0
                 d_lev = st.session_state.locked_portfolio[i].get("leverage", 1.0)
                 
             tk = row_cols[0].text_input(f"代碼 #{i+1}", value=d_tk, key=f"tk_{i}", label_visibility="collapsed").strip()
@@ -187,9 +188,12 @@ if app_mode == "📊 初始定格與每日波動再平衡盤":
                 diff = real_pct - res["target_pct"]
                 plot_data.append({"股票代碼": res["ticker"], "今日真實權重 (%)": round(real_pct, 2), "目標理想權重 (%)": res["target_pct"], "今日市值": res["val_ntd"]})
                 
+                # 防呆：確保讀取舊存檔也不會報錯
+                leverage_val = res.get('leverage', 1.0)
+                
                 cols[0].write(f"**{res['ticker']}**")
-                cols[1].write("📊 指數" if res["ticker"].startswith("^") else f"{res['init_shares']:,} 股")
-                cols[2].write(f"{res['target_pct']}% (`{res['leverage']}x`)")
+                cols[1].write("📊 指數" if res["ticker"].startswith("^") else f"{res.get('init_shares', 0):,} 股")
+                cols[2].write(f"{res['target_pct']}% (`{leverage_val}x`)")
                 cols[3].write(f"NTD {res['today_price']:.2f}")
                 cols[4].write(f"NTD {int(res['val_ntd']):,}")
                 cols[5].write(f"`{real_pct:.2f}%` \n(偏離: {diff:+.2f}%)")
@@ -205,9 +209,12 @@ if app_mode == "📊 初始定格與每日波動再平衡盤":
                 diff = real_pct - res["target_pct"]
                 plot_data.append({"股票代碼": res["ticker"], "今日真實權重 (%)": round(real_pct, 1), "目標理想權重 (%)": res["target_pct"], "今日市值": res["val_ntd"]})
                 
+                # 防呆：確保讀取舊存檔也不會報錯
+                leverage_val = res.get('leverage', 1.0)
+                
                 cols[0].write(f"**{res['ticker']}**")
-                cols[1].write("📊 指數" if res["ticker"].startswith("^") else f"{res['init_shares']:,} 股")
-                cols[2].write(f"{res['target_pct']}% (`{res['leverage']}x`)")
+                cols[1].write("📊 指數" if res["ticker"].startswith("^") else f"{res.get('init_shares', 0):,} 股")
+                cols[2].write(f"{res['target_pct']}% (`{leverage_val}x`)")
                 cols[3].write(f"USD {res['today_price']:.1f}\n(台幣:{res['today_price_in_ntd']:.1f})")
                 cols[4].write(f"NTD {res['val_ntd']:.1f}")
                 cols[5].write(f"`{real_pct:.1f}%` \n(偏離: {diff:+.1f}%)")
