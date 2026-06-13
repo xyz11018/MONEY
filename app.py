@@ -8,7 +8,16 @@ import pandas as pd
 import json
 import os
 import re
+import numpy as np
 import requests
+
+# ==========================================
+# 0. 💥 核心抗封鎖引擎：建立偽裝瀏覽器連線 Session
+# ==========================================
+yf_session = requests.Session()
+yf_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
 
 # ==========================================
 # 1. 頁面配置與專業金融視覺優化
@@ -27,6 +36,7 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     
+    /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600;}
@@ -43,7 +53,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🧠 終極智慧大腦：中英文與代碼秒速解析引擎
+# 2. 🧠 智慧大腦解析引擎 (內建字典防護線)
 # ==========================================
 def resolve_ticker(user_input):
     t = user_input.strip()
@@ -52,7 +62,7 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 1. 內建台美股熱門標的字典 (完美解決 Yahoo 阻擋雲端 API 的問題)
+    # 內建台美股熱門標的大腦字典
     local_map = {
         "台積電": "2330.TW", "台灣積體電路": "2330.TW", "鴻海": "2317.TW", "聯發科": "2454.TW",
         "廣達": "2382.TW", "台達電": "2308.TW", "富邦金": "2881.TW", "國泰金": "2882.TW",
@@ -69,26 +79,22 @@ def resolve_ticker(user_input):
         "谷歌": "GOOGL", "超微": "AMD", "META": "META", "網飛": "NFLX"
     }
     
-    # 模糊比對本地大腦字典 (例如輸入 "台灣積體電路製造" 會自動命中 "台灣積體電路")
     for key, val in local_map.items():
         if key in t or t in key:
             return val
 
-    # 2. 數字探測引擎：若為純數字/數字帶英文字母 (如 3105, 2330)，自動判斷上市或上櫃
     if re.match(r'^\d+[A-Z]?$', t_upper):
         try:
-            if yf.Ticker(f"{t_upper}.TW").fast_info.get('lastPrice'): return f"{t_upper}.TW"
+            if yf.Ticker(f"{t_upper}.TW", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TW"
         except: pass
         try:
-            if yf.Ticker(f"{t_upper}.TWO").fast_info.get('lastPrice'): return f"{t_upper}.TWO"
+            if yf.Ticker(f"{t_upper}.TWO", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TWO"
         except: pass
         return f"{t_upper}.TW"
 
-    # 3. 備援搜尋 API (當前兩道防線都沒命中時才使用)
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = requests.get(url, headers=headers, timeout=3)
+        r = requests.get(url, headers=yf_session.headers, timeout=3)
         if r.status_code == 200:
             quotes = r.json().get('quotes', [])
             if quotes:
@@ -115,19 +121,18 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 強制即時化數據引擎 (包含年線與回撤)
+# 3. 強制即時化數據引擎 (掛載連線 Session)
 # ==========================================
 def fetch_market_data(ticker):
-    """回傳最新現價、日期、年線MA200、52週高點，計算回撤率與乖離率"""
     if ticker == "CASH": 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
         return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
     try:
-        t_obj = yf.Ticker(ticker)
+        t_obj = yf.Ticker(ticker, session=yf_session)
         try: realtime_price = float(t_obj.fast_info['lastPrice'])
         except: realtime_price = None
 
-        df = yf.download(ticker, period="2y", progress=False)
+        # 歷史下載一律附加全域安全 Session
+        df = yf.download(ticker, period="2y", progress=False, session=yf_session)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             closes = df['Close'].dropna()
@@ -193,7 +198,7 @@ if app_mode == "🔍 全球 K 線分析":
     market_choice = st.sidebar.radio("快速切換 K 線圖：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
 
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
-    threshold = st.sidebar.slider("⚖️ 再平衡觸發門檻 (%)", 0.0, 10.0, 2.0, 0.5)
+    threshold = st.sidebar.slider("⚖️ 再平衡触发門檻 (%)", 0.0, 10.0, 2.0, 0.5)
     num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio", []))), min_value=1)
 
 # ==========================================
@@ -286,9 +291,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 action_text = ""
                 
                 if item["ticker"] == "CASH":
+                    currency_str = "TWD" if is_tw_mode else "USD"
+                    unit_str = "元" if is_tw_mode else "美元"
                     adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
-                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
-                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} 單位"
+                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} {unit_str}"
+                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
                     else: action_text = "無需調整"
                     
                     c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>TWD/USD 保留款</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
@@ -335,6 +342,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
+                    if is_bear and item.get("leverage", 1.0) >= 2.0: lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️破線)</span>"
 
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -421,9 +429,14 @@ elif app_mode == "🔍 全球 K 線分析":
     
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
+        
+        # 💥 實用小功能：直接在網頁上提示目前系統正解析成哪一個官方代碼，除錯極度方便！
+        st.caption(f"📊 智慧大腦連線指示：系統已將輸入解析為官方代碼 ` {ticker_input} `，正通過模擬瀏覽器安全通道抓取歷史數據...")
+        
         try:
-            with st.spinner("正在智慧解析並載入量化技術圖表中..."):
-                df_k = yf.download(ticker_input, period="2y", interval="1d", progress=False)
+            with st.spinner("正在穿越雲端防護牆並繪製 K 線圖表中..."):
+                # 💥 歷史下載套用全域 yf_session，徹底解決 Streamlit 雲端 IP 被擋造成的空表格問題
+                df_k = yf.download(ticker_input, period="2y", interval="1d", progress=False, session=yf_session)
                 if not df_k.empty:
                     if isinstance(df_k.columns, pd.MultiIndex): df_k.columns = df_k.columns.get_level_values(0)
                     df_k['MA5'] = df_k['Close'].rolling(window=5).mean()
@@ -446,5 +459,5 @@ elif app_mode == "🔍 全球 K 線分析":
                     fig_k.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=10, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                     st.plotly_chart(fig_k, use_container_width=True)
                 else:
-                    st.error("⚠️ 查無此股票之歷史 K 線資料，請確認名稱是否正確。")
+                    st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請稍候重試或改用『代碼』直接輸入。")
         except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
