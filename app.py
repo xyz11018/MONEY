@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與 CSS 終極優化 (徹底拔除 Plotly 工具列)
+# 1. 頁面配置與 CSS 視覺優化
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -36,13 +36,14 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
+    .stock-name-display { font-size: 1.1rem; color: #94a3b8; font-weight: 800; margin-top: 4px; margin-bottom: 4px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600;}
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
-    /* 💥 終極核彈：強制將 Plotly 右上角的灰色工具列從網頁底層抹除，徹底解決疊字！ */
+    /* 強制拔除所有 Plotly 隱藏工具列 */
     .modebar { display: none !important; }
     
     .dashboard-card {
@@ -65,6 +66,20 @@ DB_FILE = "portfolio_db.json"
 # ==========================================
 # 2. 終極強固解析引擎 (內建本地核心字典)
 # ==========================================
+# 股名對照表 (用於畫面顯示)
+STOCK_NAME_DICT = {
+    "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
+    "2317": "鴻海", "2603": "長榮", "0050": "元大台灣50", "00631L": "元大台灣50正2",
+    "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
+    "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
+    "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
+    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
+}
+
+def get_stock_name(ticker):
+    clean_tk = ticker.replace('.TW', '').replace('.TWO', '')
+    return STOCK_NAME_DICT.get(clean_tk, "個股標的")
+
 def resolve_ticker(user_input):
     t = user_input.strip().replace(" ", "")
     if not t: return ""
@@ -73,14 +88,10 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    local_map = {
-        "啟碁": "6285.TW", "華邦電": "2344.TW", "華邦": "2344.TW", "旺宏": "2337.TW",
-        "緯穎": "6669.TW", "台積電": "2330.TW", "台積": "2330.TW", "聯發科": "2454.TW",
-        "鴻海": "2317.TW", "長榮": "2603.TW", "正2": "00631L.TW", "台灣五十": "0050.TW",
-        "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA", "超微": "AMD",
-        "台達電": "2454.TW", "廣達": "2382.TW"
-    }
-    if t in local_map: return local_map[t]
+    # 反向搜尋字典
+    reverse_map = {v: k+".TW" for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
+    if t in reverse_map: return reverse_map[t]
+    if t in ["華邦"]: return "2344.TW"
     
     if re.match(r'^\d+$', t):
         for ext in [".TW", ".TWO"]:
@@ -205,8 +216,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
-    with st.expander(f"⚙️ 編輯 {market_label} 初始配置", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：代碼欄位可輸入「數字代碼」(如 6285) 或「中文名稱」(如 啟碁)，系統將自動連線解析。")
+    # 💡 提示更新：讓使用者明確知道這裡可以隨時調整股數與權重
+    with st.expander(f"⚙️ 點此調整：持有股數與目標權重 ({market_label})", expanded=(not db_data[current_list_key])):
+        st.info(f"💡 提示：在此修改您的持有股數與目標%，修改完畢後點擊下方按鈕即可更新系統。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -273,13 +285,16 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
+                # 取得中文股名
+                zh_name = get_stock_name(item["ticker"])
+                
                 if item["ticker"] == "CASH":
                     unit_str = "元" if is_tw_mode else "美元"
                     adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                     if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} {unit_str}"
                     elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
                     else: action_text = "無需調整"
-                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>TWD/USD 保留款</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
+                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='stock-name-display'>台/外幣保留款</div><div class='price-display'>TWD/USD</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>槓桿:</div><div class='data-value'>1.0x</div>", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>穩定無風險</div><div class='data-label' style='margin-top:4px;'>回撤率:</div><div class='data-value'>0.0%</div>", unsafe_allow_html=True)
@@ -298,7 +313,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
                         else: action_text = "無需調整"
                         
-                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
+                    # 💡 UI 更新：在代碼下方直接顯示中文名稱
+                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>槓桿屬性:</div><div class='data-value'>{item.get('leverage', 1.0)}x</div>", unsafe_allow_html=True)
                     
@@ -313,7 +329,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
-                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -349,16 +364,16 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
-            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
-            sc1, sc2, sc3 = st.columns(3)
-            sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
-            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            
+            # 💡 UI 更新：依您的要求取消總曝險與實際槓桿，僅保留總投資市值
+            st.metric(f"總投資市值 (NTD)", f"{int(local_total_val):,}")
+            
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
                 fig_pie = px.pie(pie_df, values='val', names='tk', hole=0.4, title=f"{market_label}資產 真實比重圖")
                 fig_pie.update_layout(margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                st.plotly_chart(fig_pie, use_container_width=True)
+                # 強制關閉工具列
+                st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
                 
         with footer_cols[1]:
             if current_view_data:
@@ -369,7 +384,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     go.Bar(name='設定目標 (%)', x=bar_df['tk'], y=bar_df['Target'], marker_color='#475569')
                 ])
                 fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                st.plotly_chart(fig_bar, use_container_width=True)
+                # 強制關閉工具列
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
 # 6. 分頁：全球 K 線分析
@@ -473,6 +489,7 @@ elif app_mode == "🔍 全球 K 線分析":
                         
                         # config 搭配 CSS 雙重封殺模式列
                         fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
+                        # 強制關閉工具列
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                         st.session_state.ai_data = {
@@ -484,7 +501,7 @@ elif app_mode == "🔍 全球 K 線分析":
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
     # ==========================================
-    # 🤖 最新引擎：直連次世代 2.5 Flash
+    # 🤖 AI 診斷引擎：直連最新 Gemini 3.5 Flash
     # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
@@ -494,7 +511,7 @@ elif app_mode == "🔍 全球 K 線分析":
                 st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key 密碼！")
             else:
                 d = st.session_state.ai_data
-                with st.spinner("正在呼叫最新一代 Gemini 2.5 Flash 進行大數據診斷..."):
+                with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
                     prompt = f"""
                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
                     標的：{d['title']}
@@ -513,11 +530,23 @@ elif app_mode == "🔍 全球 K 線分析":
                     """
                     
                     try:
-                        # 💥 呼叫清單中第一個絕對支援的次世代模型
-                        model = genai.GenerativeModel("gemini-2.5-flash")
+                        # 💡 升級：首選使用最新 3.5 模型
+                        model = genai.GenerativeModel("gemini-3.5-flash")
                         response = model.generate_content(prompt)
-                        st.success("✅ 成功對接 Gemini 2.5 次世代模型！")
+                        st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
                         st.info(response.text)
                     except Exception as ai_err:
-                        st.error(f"❌ 發生未知的連線錯誤：")
-                        st.code(str(ai_err))
+                        err_str = str(ai_err)
+                        if "404" in err_str:
+                            st.warning("⚠️ 系統偵測到 3.5 模型在您的伺服器區尚未完全開放。正自動為您無縫降級至穩定版 2.5...")
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！以下是診斷結果：")
+                                st.info(fallback_response.text)
+                            except Exception as fallback_err:
+                                st.error("❌ 連線失敗，請檢查 API 權限或網路狀態。")
+                                st.code(str(fallback_err))
+                        else:
+                            st.error(f"❌ 發生未知的連線錯誤：")
+                            st.code(err_str)
