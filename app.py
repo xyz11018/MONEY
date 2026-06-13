@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與終端视觉優化
+# 1. 頁面配置與金融終端視覺優化
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -45,7 +45,6 @@ st.markdown("""
     
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
-    /* 🛠️ 強制設定戰情儀表板卡片為專業高對比深灰底、亮色字，徹底解決文字看不到問題 */
     .dashboard-card {
         background: #1e293b !important;
         border-radius: 8px;
@@ -80,7 +79,7 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 🎯 核心防封鎖升級：本地常查核心字典（免經過網路，直接硬解轉譯）
+    # 本地常查核心字典（免經過網路，直接硬解轉譯）
     local_map = {
         "啟碁": "6285.TW", "華邦電": "2344.TW", "華邦": "2344.TW", "旺宏": "2337.TW",
         "緯穎": "6669.TW", "台積電": "2330.TW", "台積": "2330.TW", "聯發科": "2454.TW",
@@ -407,7 +406,7 @@ elif app_mode == "🔍 全球 K 線分析":
         ticker_input = resolve_ticker(raw_ticker_input)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。如果是較冷門的台股，因網頁API遭阻斷，在此分頁請『直接輸入數字代碼』(如: 2337) 即可 100% 通關！")
+            st.error(f"❌ 查無此標的。如果是較冷門的台股，請『直接輸入四位數代碼』(如: 2337) 即可 100% 通關！")
         else:
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
             
@@ -478,11 +477,11 @@ elif app_mode == "🔍 全球 K 線分析":
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
                         
-                        # 🛠️ 終極修復：隱藏灰色互動工具列，完美拔除遮擋疊字根源
+                        # 🛠️ 完全隱藏 Plotly 互動圖示，徹底解決疊字
                         fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-                        # 🧠 關鍵修正：將當前成功抓到的所有量化數據，壓入記憶體快取，防止點擊 AI 按鈕時數據失蹤
+                        # 🧠 將最新數據寫入暫存記憶體，防止點擊 AI 診斷按鈕後畫面歸零
                         st.session_state.ai_data = {
                             "title": clean_title, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
                             "n3": n3, "ma3": float(df['MA3'].iloc[-1]), "rsi": rsi_val, "rsi_status": rsi_status,
@@ -491,13 +490,13 @@ elif app_mode == "🔍 全球 K 線分析":
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
-    # 🤖 獨立渲染 AI 診斷板塊：保證不會因為 Streamlit 的 Rerun 機制而閃退跳掉
+    # 🤖 獨立渲染 AI 診斷板塊
     if st.session_state.ai_data is not None:
         st.markdown("---")
         st.subheader("🤖 AI 專屬個股診斷")
         if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
             if not api_key:
-                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key 密碼！")
+                st.warning("⚠️ 系統沒有偵測到大腦核心。請先在左側邊欄輸入您的 Gemini API Key！")
             else:
                 d = st.session_state.ai_data
                 with st.spinner("正在安全調度官方 AI 通道進行大數據診斷..."):
@@ -518,9 +517,17 @@ elif app_mode == "🔍 全球 K 線分析":
                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                     """
                     try:
-                        # 🦾 萬用官方 SDK 通道安全防禦
+                        # 🦾 呼叫 Google 官方標準通道
                         model = genai.GenerativeModel("gemini-1.5-flash")
                         response = model.generate_content(prompt)
                         st.info(response.text)
                     except Exception as ai_err:
-                        st.error(f"❌ AI 診斷未成功。可能您的 Key 權限受限，或跨國回應逾時。請稍等數秒後再次點擊嘗試！錯誤日誌：{ai_err}")
+                        st.error(f"❌ 發生權限錯誤 (404)。\n這表示您的 API Key 綁定在無法存取 Gemini 模型舊專案中。")
+                        st.warning("👉 **絕對成功的解法**：請前往 Google AI Studio 網站，點擊「Create API Key」，並在清單中選擇 **【Create API key in new project】**(建立新專案中產生)，將那把全新的密碼貼進來即可解鎖！\n\n系統回傳原始錯誤日誌：")
+                        st.code(str(ai_err))
+                        
+                        # 🔍 診斷此密碼到底能存取哪些模型
+                        try:
+                            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                            st.write(f"💡 您的舊密碼目前僅支援：`{models}`")
+                        except: pass
