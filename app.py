@@ -14,10 +14,9 @@ import re
 # ==========================================
 st.set_page_config(layout="wide", page_title="全球資產動態平衡系統", page_icon="🏦")
 
-# 使用自適應 rgba 與原生變數，確保 Light/Dark 模式皆完美顯示文字
 st.markdown("""
     <style>
-    /* 質感標題區塊，文字強制高亮不消失 */
+    /* 質感標題區塊 */
     .market-header { 
         padding: 16px 20px; border-radius: 10px; font-weight: 700; 
         margin-bottom: 20px; font-size: 1.3rem; color: #ffffff !important;
@@ -27,13 +26,12 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     
-    /* 專業金融數據字體板塊 (自適應主題色) */
+    /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
-    /* 新聞模組質感卡片 */
     .news-card {
         padding: 15px; border-radius: 8px; 
         background-color: rgba(148, 163, 184, 0.08); 
@@ -55,7 +53,6 @@ def resolve_ticker(user_input):
     t = user_input.strip().upper()
     if not t: return ""
     if t in ["現金", "CASH"]: return "CASH"
-    
     if t.startswith("^") or t.endswith(".TW") or t.endswith(".TWO"): return t
     if re.match(r'^\d+[A-Z]?$', t):
         test_tw = yf.download(f"{t}.TW", period="1d", progress=False)
@@ -84,20 +81,11 @@ def get_leverage(ticker):
     if base in us_n3x: return -3.0
     return 1.0
 
-@st.cache_data(ttl=86400)
-def fetch_yield(ticker):
-    if ticker == "CASH": return 0.0
-    try:
-        info = yf.Ticker(ticker).info
-        raw_yield = info.get('dividendYield', 0.0)
-        return float(raw_yield) * 100 if raw_yield else 0.0
-    except: return 0.0
-
 # ==========================================
 # 3. 核心功能：獨立存檔機制
 # ==========================================
 def load_portfolio():
-    default_data = {"init_funds": 1000000, "tw_portfolio": [], "us_portfolio": []}
+    default_data = {"tw_portfolio": [], "us_portfolio": []}
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f: 
@@ -144,9 +132,7 @@ if app_mode == "🔍 全球 K 線分析":
 
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     threshold = st.sidebar.slider("⚖️ 再平衡觸發門檻 (%)", 0.0, 10.0, 2.0, 0.5)
-    init_funds = st.sidebar.number_input("💵 單一市場投入本金 (NTD)", value=int(db_data.get("init_funds", 1000000)), step=10000)
-    num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio", [])) or 3, min_value=1)
-    db_data["init_funds"] = init_funds
+    num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio", []))), min_value=1)
 
 # ==========================================
 # 5. 主功能：資產動態監控盤
@@ -158,25 +144,27 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業分析面板</h1>', unsafe_allow_html=True)
     
-    with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (該市場總權重應為 100%)", expanded=(not db_data[current_list_key])):
+    # 📌 獨立設定區 (改為手動輸入真實持股)
+    with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
+        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總金額」。")
         cols = st.columns([2, 2, 2])
-        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**預估殖利率% (可填0)**")
+        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**持有股數 / 現金金額**")
         
         new_setup = []
         for i in range(int(num_assets)):
             r_cols = st.columns([2, 2, 2])
-            hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "target_pct": 0, "yield_pct": 0.0}
+            hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "target_pct": 0, "init_shares": 0}
             
             display_tk = hist["ticker"].replace(".TWO", "").replace(".TW", "") if (".TW" in hist.get("ticker", "") or ".TWO" in hist.get("ticker", "")) else hist.get("ticker", "")
             raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼 或 現金").strip()
             
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
-            safe_yld = min(1000.0, max(0.0, float(hist.get("yield_pct", 0.0))))
+            safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
             pct = r_cols[1].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
-            yld = r_cols[2].number_input(f"yld_{i}", min_value=0.0, max_value=1000.0, value=safe_yld, step=0.5, label_visibility="collapsed")
+            shares_input = r_cols[2].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             
-            if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "yield_pct": yld})
+            if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "shares_input": shares_input})
         
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
@@ -188,16 +176,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     lev = get_leverage(real_ticker)
                     
                     if p and p > 0: 
-                        alloc_ntd = init_funds * (item["target_pct"] / 100)
-                        price_ntd = p if is_tw_mode else (p * current_rate)
-                        shares = int(alloc_ntd / price_ntd) if not real_ticker.startswith("^") else 1
-                        
-                        auto_yld = fetch_yield(real_ticker)
-                        final_yield = item["yield_pct"] if item["yield_pct"] > 0 else auto_yld
-                        
                         locked_assets.append({
                             "ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, 
-                            "init_shares": shares, "init_price": p, "yield_pct": final_yield, "is_tw": is_tw_mode
+                            "init_shares": item["shares_input"], "init_price": p, "is_tw": is_tw_mode
                         })
                     else: error_tickers.append(item["raw_ticker"])
             
@@ -210,7 +191,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
 
     # 📌 數據處理與渲染
     current_view_data = []
-    local_total_val, local_total_exp, local_dividend = 0, 0, 0
+    local_total_val, local_total_exp = 0, 0
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
@@ -221,20 +202,21 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     lev = asset.get("leverage", 1.0)
                     is_tw = asset.get("is_tw", is_tw_mode)
                     
+                    # 計算市值邏輯：大盤/現金使用金額，股票使用股數*價格
                     if asset["ticker"].startswith("^"):
-                        now_val_ntd = db_data["init_funds"] * (asset["target_pct"] / 100) * (now_p / asset.get("init_price", now_p))
+                        now_val_ntd = asset.get("init_shares", 0) * (now_p / asset.get("init_price", now_p))
+                    elif asset["ticker"] == "CASH":
+                        now_val_ntd = asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                     else:
                         price_ntd = now_p if is_tw_mode else (now_p * current_rate)
                         now_val_ntd = price_ntd * asset.get("init_shares", 0)
                     
                     exposure_ntd = now_val_ntd * lev
-                    div_cash = now_val_ntd * (asset.get("yield_pct", 0) / 100)
                     
                     local_total_val += now_val_ntd
                     local_total_exp += exposure_ntd
-                    local_dividend += div_cash
                     
-                    current_view_data.append({**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "div_cash": div_cash})
+                    current_view_data.append({**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd})
 
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
@@ -243,7 +225,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
                 diff = real_pct - item["target_pct"]
                 
-                # 全方位自適應字體渲染，不論 Light/Dark 模式皆不遮字
                 if item["ticker"] == "CASH":
                     currency_str = "TWD" if is_tw_mode else "USD"
                     unit_str = "元" if is_tw_mode else "美元"
@@ -252,9 +233,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 else:
                     clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>{'📊 指數追蹤' if item['ticker'].startswith('^') else '持股總數:'}</div><div class='data-value'>{item.get('init_shares', 0):,} 股</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持股總數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div>", unsafe_allow_html=True)
                 
-                c[2].markdown(f"<div class='data-label'>理想權重:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>殖利率:</div><div class='data-value'>{item.get('yield_pct', 0):.1f}%</div>", unsafe_allow_html=True)
+                c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div>", unsafe_allow_html=True)
                 c[3].markdown(f"<div class='data-label'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                 c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x</div><div class='data-label' style='margin-top:4px;'>總曝險額:</div><div class='data-value'>NTD {int(item['exposure_ntd']):,}</div>", unsafe_allow_html=True)
                 
@@ -268,13 +249,10 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2 = st.columns(2)
-            sc1.metric(f"{market_label} 總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"{market_label} 總曝險 (NTD)", f"{int(local_total_exp):,}")
-            
-            sc3, sc4 = st.columns(2)
-            sc3.metric(f"{market_label} 實際整體槓桿", f"{overall_leverage:.2f} 倍")
-            sc4.metric("預估年化股息現金流", f"NTD {int(local_dividend):,}")
+            sc1, sc2, sc3 = st.columns(3)
+            sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
+            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
+            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -292,11 +270,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 ])
                 fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                 st.plotly_chart(fig_bar, use_container_width=True)
-    else:
-        st.info("請展開上方設定區，輸入股票代碼與比例並完成鎖定。")
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 + 彭博智慧新聞終端
+# 6. 分頁：全球 K 線分析 + 智慧新聞終端
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析與即時情報")
@@ -314,7 +290,6 @@ elif app_mode == "🔍 全球 K 線分析":
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
         
-        # 建立並列版面：左邊看 K 線趨勢，右邊同步看即時新聞
         k_col, news_col = st.columns([6, 4])
         
         with k_col:
@@ -345,26 +320,26 @@ elif app_mode == "🔍 全球 K 線分析":
             except: st.error("圖表載入失敗，請確認網路或代碼。")
             
         with news_col:
-            st.subheader("📰 智慧財經即時情報")
+            st.subheader("📰 市場即時動態與新聞")
             if ticker_input == "CASH":
                 st.info("現金資產暫無特定的全球市場新聞。")
             else:
                 try:
-                    with st.spinner("正在檢索最新利多與利空消息..."):
+                    with st.spinner("正在檢索最新消息..."):
                         t_obj = yf.Ticker(ticker_input)
-                        news_list = t_obj.news[:6] # 撈取前 6 則即時新聞
+                        news_list = t_obj.news
+                        clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
                         
-                        if news_list:
-                            # 語意智慧識別關鍵字
+                        # 雙引擎防護：如果有抓到新聞，就顯示卡片；如果 API 為空，就提供可靠的備用搜尋按鈕
+                        if news_list and len(news_list) > 0:
                             bull_keywords = ['創高', '大漲', '營收新高', '利多', '優於預期', '暴增', '買進', '成長', '噴發', 'HIGH', 'GROWTH', 'BULL', 'BEAT', 'UPGRADE']
                             bear_keywords = ['衰退', '大跌', '利空', '低於預期', '虧損', '賣出', '修正', '重挫', 'DROP', 'FALL', 'BEAR', 'MISS', 'DOWNGRADE']
                             
-                            for news in news_list:
+                            for news in news_list[:6]:
                                 title = news.get('title', '')
                                 publisher = news.get('publisher', '')
                                 link = news.get('link', '')
                                 
-                                # 自動多空判斷
                                 title_upper = title.upper()
                                 if any(k in title_upper for k in bull_keywords):
                                     tag = "<span style='color:#10b981; font-weight:bold;'>🟢 潛在利多</span>"
@@ -373,7 +348,6 @@ elif app_mode == "🔍 全球 K 線分析":
                                 else:
                                     tag = "<span style='color:#38bdf8; font-weight:bold;'>ℹ️ 市場動態</span>"
                                 
-                                # 卡片式排版設計
                                 st.markdown(f"""
                                 <div class='news-card'>
                                     <div style='margin-bottom: 6px;'>{tag} <span style='font-size:0.85rem; opacity:0.6;'> | 來源: {publisher}</span></div>
@@ -382,6 +356,16 @@ elif app_mode == "🔍 全球 K 線分析":
                                 </div>
                                 """, unsafe_allow_html=True)
                         else:
-                            st.info("💡 暫無此標的之相關新聞消息。")
+                            # 備用方案：Google 財經新聞直接搜尋連結 (保證絕對有資料)
+                            search_url = f"https://www.google.com/search?q={clean_title}+股票+新聞&tbm=nws"
+                            st.warning(f"💡 雅虎財經 API 暫無回傳最新新聞。")
+                            st.markdown(f"""
+                                <div class='news-card' style='text-align:center; padding:30px;'>
+                                    <h4 style='margin-bottom:15px;'>👉 點擊下方按鈕獲取最新可靠資訊</h4>
+                                    <a href='{search_url}' target='_blank' style='display:inline-block; background-color:#4f46e5; color:white; padding:10px 20px; border-radius:5px; text-decoration:none; font-weight:bold; font-size:1.1rem;'>
+                                        🔍 搜尋【{clean_title}】Google 即時新聞
+                                    </a>
+                                </div>
+                            """, unsafe_allow_html=True)
                 except:
-                    st.info("ℹ️ 暫時無法取得即時新聞流。")
+                    st.info("ℹ️ 網路延遲，暫時無法取得即時新聞流。")
