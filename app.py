@@ -263,11 +263,15 @@ st.sidebar.markdown("---")
 api_key = MY_API_KEY
 if api_key: genai.configure(api_key=api_key)
 
-# 💡 回歸最直覺的市場切換模式
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
 
-if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
+# 💡 修復：根據使用者選擇的功能分頁，呈現對應的側邊欄選單
+if app_mode == "🔍 全球 K 線分析":
+    st.sidebar.header("🌍 大盤速查")
+    market_choice = st.sidebar.radio("快速切換 K 線圖：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
+
+elif app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
     market_label = "台股" if is_tw_mode else "美股"
     current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
@@ -482,7 +486,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ==========================================
-        # 🤖 手動觸發：AI 投資組合戰略兵推 (取代自動背景運算)
+        # 🤖 手動觸發：AI 投資組合戰略兵推
         # ==========================================
         st.markdown("---")
         st.subheader("🤖 投資組合戰略兵推 (AI 深度解析)")
