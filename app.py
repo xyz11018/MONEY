@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置
+# 1. 頁面配置與 CSS 終極優化 (徹底拔除 Plotly 工具列)
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -41,6 +41,22 @@ st.markdown("""
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
+    
+    /* 💥 終極核彈：強制將 Plotly 右上角的灰色工具列從網頁底層抹除，徹底解決疊字！ */
+    .modebar { display: none !important; }
+    
+    .dashboard-card {
+        background-color: #f1f5f9 !important; 
+        border-radius: 8px;
+        padding: 14px;
+        border-left: 5px solid #10b981;
+        color: #0f172a !important; 
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+    .dashboard-card b, .dashboard-card span {
+        color: #0f172a !important;
+        font-weight: 700 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -219,7 +235,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。請確認名稱或直接輸入數字代碼。")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 6285) 即可通關！")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -297,6 +313,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
+                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -454,6 +471,7 @@ elif app_mode == "🔍 全球 K 線分析":
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
                         
+                        # config 搭配 CSS 雙重封殺模式列
                         fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
@@ -466,7 +484,7 @@ elif app_mode == "🔍 全球 K 線分析":
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
     # ==========================================
-    # 🤖 終極防護網 AI 診斷按鈕 (自動降級與權限掃描)
+    # 🤖 最新引擎：直連次世代 2.5 Flash
     # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
@@ -476,7 +494,7 @@ elif app_mode == "🔍 全球 K 線分析":
                 st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key 密碼！")
             else:
                 d = st.session_state.ai_data
-                with st.spinner("正在安全調度官方 AI 通道進行大數據診斷..."):
+                with st.spinner("正在呼叫最新一代 Gemini 2.5 Flash 進行大數據診斷..."):
                     prompt = f"""
                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
                     標的：{d['title']}
@@ -495,31 +513,11 @@ elif app_mode == "🔍 全球 K 線分析":
                     """
                     
                     try:
-                        # 嘗試呼叫最新的 1.5-flash 模型
-                        model = genai.GenerativeModel("gemini-1.5-flash")
+                        # 💥 呼叫清單中第一個絕對支援的次世代模型
+                        model = genai.GenerativeModel("gemini-2.5-flash")
                         response = model.generate_content(prompt)
+                        st.success("✅ 成功對接 Gemini 2.5 次世代模型！")
                         st.info(response.text)
                     except Exception as ai_err:
-                        err_str = str(ai_err)
-                        if "404" in err_str:
-                            st.warning("⚠️ 系統偵測到您的密碼無法存取 1.5 最新模型 (404)。正在自動為您降級至相容性最高的『gemini-pro』模型...")
-                            try:
-                                # 自動降級到所有帳號都絕對支援的基礎模型 (Gemini 1.0)
-                                fallback_model = genai.GenerativeModel("gemini-pro")
-                                fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 降級切換成功！以下是 AI 診斷結果：")
-                                st.info(fallback_response.text)
-                            except Exception as fallback_err:
-                                st.error("❌ 連基礎版模型都被拒絕。正在為您直接掃描此金鑰的真實權限...")
-                                try:
-                                    # 掃描此金鑰到底可以使用哪些模型
-                                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                                    if not models:
-                                        st.code("掃描結果：這把金鑰【沒有】任何 AI 文本生成的權限。\n\n請務必將左側密碼框內的舊密碼清空，並貼上您剛在 AI Studio 新申請的那把密碼！")
-                                    else:
-                                        st.code(f"掃描結果：這把金鑰目前只能使用以下模型：\n{models}")
-                                except Exception as list_err:
-                                    st.code(f"無法列出模型，可能是連線問題：{list_err}")
-                        else:
-                            st.error(f"❌ 發生未知的連線錯誤：")
-                            st.code(err_str)
+                        st.error(f"❌ 發生未知的連線錯誤：")
+                        st.code(str(ai_err))
