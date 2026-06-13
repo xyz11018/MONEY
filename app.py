@@ -27,12 +27,12 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     
+    /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
-    .news-card { padding: 15px; border-radius: 8px; background-color: rgba(148, 163, 184, 0.08); border: 1px solid rgba(148, 163, 184, 0.15); margin-bottom: 12px; }
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
     label, .stMarkdown p { font-weight: 500; }
@@ -78,16 +78,14 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 💥 進階量化數據獲取 (現價, MA200, 52W高點)
+# 3. 💥 即時化量化數據獲取 (移除所有 cache 快存裝飾器，確保即時更新)
 # ==========================================
-@st.cache_data(ttl=300)
 def fetch_market_data(ticker):
-    """回傳現價、年線MA200、52週高點，計算回撤率"""
+    """回傳最新現價、年線MA200、52週高點，計算回撤率"""
     if ticker == "CASH": 
         return {"price": 1.0, "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0}
     try:
-        # 抓取過去一年的資料來算 MA200 與 52W 高點
-        df = yf.download(ticker, period="1y", progress=False)
+        df = yf.download(ticker, period="2y", progress=False)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             closes = df['Close'].dropna()
@@ -98,6 +96,17 @@ def fetch_market_data(ticker):
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1]) if len(closes) >= 200 else price
                 drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
                 return {"price": price, "ma200": ma200, "high52w": high52w, "drawdown": drawdown}
+    except: return None
+    return None
+
+def fetch_realtime_data(ticker):
+    if ticker == "CASH": return 1.0 
+    try:
+        data = yf.download(ticker, period="5d", progress=False)
+        if not data.empty:
+            if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+            valid_closes = data['Close'].dropna() 
+            if not valid_closes.empty: return float(valid_closes.iloc[-1])
     except: return None
     return None
 
@@ -118,7 +127,7 @@ def save_portfolio(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# 獲取基礎環境資料
+# 獲取環境數據 (完全即時)
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data else 32.5
 vix_data = fetch_market_data("^VIX")
@@ -130,7 +139,6 @@ db_data = load_portfolio()
 st.sidebar.title("🎛️ 量化策略終端機")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
-# VIX 恐慌指數雷達
 vix_color = "#ef4444" if current_vix >= 25 else ("#f59e0b" if current_vix >= 20 else "#10b981")
 vix_status = "⚠️ 極度恐慌" if current_vix >= 25 else ("⚡ 波動加劇" if current_vix >= 20 else "✅ 市場穩定")
 st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
@@ -160,7 +168,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業分析面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總金額」。")
+        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總數量」。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -209,7 +217,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
-        with st.spinner(f"🔄 正在運算量化風險與估值..."):
+        with st.spinner(f"🔄 正在運算最新即時動態數據..."):
             for asset in target_portfolio:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
@@ -230,67 +238,62 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
             for item in current_view_data:
-                c = st.columns([1.5, 1.2, 1.3, 1.5, 1.5, 2.5])
+                c = st.columns([1.5, 1.4, 1.1, 1.5, 1.1, 2.6])
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
                 diff = real_pct - item["target_pct"]
                 
-                # 計算達到目標需調整的量
                 target_val = local_total_val * (item["target_pct"] / 100.0)
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
+                lev_warning = ""
                 
-                if item["ticker"] == "CASH":
-                    adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
-                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
-                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} 單位"
-                    else: action_text = "無需調整"
-                elif item["ticker"].startswith("^"):
-                    adjust_amt = int(diff_val)
-                    if adjust_amt > 0: action_text = f"需加碼: {adjust_amt:,} 單位"
-                    elif adjust_amt < 0: action_text = f"需減碼: {abs(adjust_amt):,} 單位"
-                    else: action_text = "無需調整"
-                else:
-                    price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
-                    adjust_shares = int(diff_val / price_ntd) if price_ntd > 0 else 0
-                    if adjust_shares > 0: action_text = f"需買進: {adjust_shares:,} 股"
-                    elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
-                    else: action_text = "無需調整"
-
-                # 渲染列
                 if item["ticker"] == "CASH":
                     currency_str = "TWD" if is_tw_mode else "USD"
                     unit_str = "元" if is_tw_mode else "美元"
-                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div>", unsafe_allow_html=True)
-                    c[3].markdown(f"<div class='data-label'>無風險部位</div><div class='data-value'>---</div>", unsafe_allow_html=True)
+                    adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
+                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} {unit_str}"
+                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
+                    else: action_text = "無需調整"
+                    
+                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>{currency_str} 保留款</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
+                    c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>穩定資產</div><div class='data-label' style='margin-top:4px;'>距最高點回撤:</div><div class='data-value'>0.0%</div>", unsafe_allow_html=True)
                 else:
                     clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
+                    if item["ticker"].startswith("^"):
+                        adjust_amt = int(diff_val)
+                        if adjust_amt > 0: action_text = f"需加碼: NTD {adjust_amt:,}"
+                        elif adjust_amt < 0: action_text = f"需減碼: NTD {abs(adjust_amt):,}"
+                        else: action_text = "無需調整"
+                    else:
+                        price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
+                        adjust_shares = int(diff_val / price_ntd) if price_ntd > 0 else 0
+                        if adjust_shares > 0: action_text = f"需買進: {adjust_shares:,} 股"
+                        elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
+                        else: action_text = "無需調整"
+                        
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     
-                    # === 風險趨勢與回撤監控 (最強新增) ===
                     is_bear = item['now_p'] < item['ma200']
                     trend_tag = "<span style='color:#ef4444; font-weight:700;'>🔴 破線空頭</span>" if is_bear else "<span style='color:#10b981; font-weight:700;'>🟢 多頭格局</span>"
                     dd_color = "#ef4444" if item['drawdown'] < -20 else ("#f59e0b" if item['drawdown'] < -10 else "#f8fafc")
-                    
                     c[3].markdown(f"<div class='data-label'>長線趨勢 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:4px;'>距最高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item['drawdown']:.1f}%</div>", unsafe_allow_html=True)
-                
-                c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
-                
-                # 槓桿高危險警告
-                lev_warning = ""
-                if item.get("leverage", 1.0) >= 2.0 and item.get('now_p', 1) < item.get('ma200', 0):
-                    lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️ 破線請降槓桿)</span>"
                     
-                c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x{lev_warning}</div><div class='data-label' style='margin-top:4px;'>總曝險額:</div><div class='data-value'>NTD {int(item['exposure_ntd']):,}</div>", unsafe_allow_html=True)
-                
-                if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
-                else: c[5].success(f"✅ 平衡區間\n(佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+                    if item.get("leverage", 1.0) >= 2.0 and is_bear:
+                        lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️破線)</span>"
 
-        # 📌 💰 動態資金加碼分配器 (最強新增)
+                c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div>", unsafe_allow_html=True)
+                c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x{lev_warning}</div>", unsafe_allow_html=True)
+                
+                if abs(diff) > threshold: 
+                    c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+                else: 
+                    c[5].success(f"✅ 平衡區間\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+
+        # 📌 💰 動態資金加碼分配器
         st.markdown("---")
         st.markdown("### 💰 動態資金加碼分配器 (Smart Cash Deployment)")
-        st.info("如果您打算注入新資金，系統會告訴您如何將這筆錢精準分配給『跌深或權重不足』的標的，加速達成平衡。")
         add_cash = st.number_input("打算加碼的總資金 (NTD)", min_value=0, value=0, step=10000)
         
         if add_cash > 0:
@@ -318,21 +321,19 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             
             if buy_list:
                 for b in buy_list: st.markdown(f"- {b}")
-            else:
-                st.write("目前比例完美，可按目標比例等分投入。")
+            else: st.write("目前比例完美，可按目標比例等分投入。")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 📌 底部指標與圖表
+        # 📌 底部指標與圖表 (移除總曝險指標欄位)
         st.markdown("---")
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2, sc3 = st.columns(3)
+            sc1, sc2 = st.columns(2)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
-            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            sc2.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -352,10 +353,10 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 + 智慧新聞終端
+# 6. 分頁：全球 K 線分析 (滿版無新聞干擾)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
-    st.title("🔍 全球金融標的技術分析與即時情報")
+    st.title("🔍 全球金融標的技術分析")
     
     if market_choice == "台灣加權指數 (台股)": default_ticker = "^TWII"
     elif market_choice == "那斯達克 (美股科技)": default_ticker = "^IXIC"
@@ -369,78 +370,28 @@ elif app_mode == "🔍 全球 K 線分析":
     
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
-        
-        k_col, news_col = st.columns([6, 4])
-        
-        with k_col:
-            try:
-                with st.spinner("載入量化技術圖表中..."):
-                    df_k = yf.download(ticker_input, period="2y", interval="1d", progress=False)
-                    if not df_k.empty:
-                        if isinstance(df_k.columns, pd.MultiIndex): df_k.columns = df_k.columns.get_level_values(0)
-                        df_k['MA5'] = df_k['Close'].rolling(window=5).mean()
-                        df_k['MA20'] = df_k['Close'].rolling(window=20).mean()
-                        df_k['MA200'] = df_k['Close'].rolling(window=200).mean()
-                        
-                        clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
-                        st.subheader(f"📈 {clean_title} 技術走勢 (含MA200年線)")
-                        
-                        fig_k = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-                        fig_k.add_trace(go.Candlestick(x=df_k.index, open=df_k['Open'], high=df_k['High'], low=df_k['Low'], close=df_k['Close'], name="K線"), row=1, col=1)
-                        fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA5'], mode='lines', name='MA5 (週線)', line=dict(color='#ff9900', width=1.5)), row=1, col=1)
-                        fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA20'], mode='lines', name='MA20 (月線)', line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
-                        fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA200'], mode='lines', name='MA200 (年線)', line=dict(color='#ef4444', width=2)), row=1, col=1)
-                        fig_k.add_trace(go.Bar(x=df_k.index, y=df_k['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
-                        
-                        last_6mo = df_k.index.max() - pd.Timedelta(days=180)
-                        fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=1, col=1)
-                        fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=2, col=1)
-                        fig_k.update_layout(xaxis_rangeslider_visible=False, height=600, margin=dict(t=10, b=10, l=10, r=10))
-                        st.plotly_chart(fig_k, use_container_width=True)
-            except: st.error("圖表載入失敗，請確認網路或代碼。")
-            
-        with news_col:
-            st.subheader("📰 市場即時動態與新聞")
-            if ticker_input == "CASH":
-                st.info("現金資產暫無特定的全球市場新聞。")
-            else:
-                try:
-                    with st.spinner("正在檢索最新消息..."):
-                        t_obj = yf.Ticker(ticker_input)
-                        news_list = t_obj.news
-                        clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
-                        
-                        if news_list and len(news_list) > 0:
-                            bull_keywords = ['創高', '大漲', '營收新高', '利多', '優於預期', '暴增', '買進', '成長', '噴發', 'HIGH', 'GROWTH', 'BULL', 'BEAT', 'UPGRADE']
-                            bear_keywords = ['衰退', '大跌', '利空', '低於預期', '虧損', '賣出', '修正', '重挫', 'DROP', 'FALL', 'BEAR', 'MISS', 'DOWNGRADE']
-                            
-                            for news in news_list[:6]:
-                                title = news.get('title', '')
-                                publisher = news.get('publisher', '')
-                                link = news.get('link', '')
-                                
-                                title_upper = title.upper()
-                                if any(k in title_upper for k in bull_keywords): tag = "<span style='color:#10b981; font-weight:bold;'>🟢 潛在利多</span>"
-                                elif any(k in title_upper for k in bear_keywords): tag = "<span style='color:#ef4444; font-weight:bold;'>🔴 潛在利空</span>"
-                                else: tag = "<span style='color:#38bdf8; font-weight:bold;'>ℹ️ 市場動態</span>"
-                                
-                                st.markdown(f"""
-                                <div class='news-card'>
-                                    <div style='margin-bottom: 6px;'>{tag} <span style='font-size:0.85rem; opacity:0.6;'> | 來源: {publisher}</span></div>
-                                    <div style='font-size:1.05rem; font-weight:600; line-height:1.3; margin-bottom:8px;'>{title}</div>
-                                    <a href='{link}' target='_blank' style='font-size:0.9rem; color:#4f46e5; text-decoration:none; font-weight:600;'>🔗 閱讀完整報導 →</a>
-                                </div>
-                                """, unsafe_allow_html=True)
-                        else:
-                            search_url = f"https://www.google.com/search?q={clean_title}+股票+新聞&tbm=nws"
-                            st.warning(f"💡 雅虎財經 API 暫無回傳最新新聞。")
-                            st.markdown(f"""
-                                <div class='news-card' style='text-align:center; padding:30px;'>
-                                    <h4 style='margin-bottom:15px;'>👉 點擊下方按鈕獲取最新可靠資訊</h4>
-                                    <a href='{search_url}' target='_blank' style='display:inline-block; background-color:#4f46e5; color:white; padding:10px 20px; border-radius:5px; text-decoration:none; font-weight:bold; font-size:1.1rem;'>
-                                        🔍 搜尋【{clean_title}】Google 即時新聞
-                                    </a>
-                                </div>
-                            """, unsafe_allow_html=True)
-                except:
-                    st.info("ℹ️ 網路延遲，暫時無法取得即時新聞流。")
+        try:
+            with st.spinner("載入量化技術圖表中..."):
+                df_k = yf.download(ticker_input, period="2y", interval="1d", progress=False)
+                if not df_k.empty:
+                    if isinstance(df_k.columns, pd.MultiIndex): df_k.columns = df_k.columns.get_level_values(0)
+                    df_k['MA5'] = df_k['Close'].rolling(window=5).mean()
+                    df_k['MA20'] = df_k['Close'].rolling(window=20).mean()
+                    df_k['MA200'] = df_k['Close'].rolling(window=200).mean()
+                    
+                    clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
+                    st.subheader(f"📈 {clean_title} 技術走勢 (含MA200年線)")
+                    
+                    fig_k = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                    fig_k.add_trace(go.Candlestick(x=df_k.index, open=df_k['Open'], high=df_k['High'], low=df_k['Low'], close=df_k['Close'], name="K線"), row=1, col=1)
+                    fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA5'], mode='lines', name='MA5 (週線)', line=dict(color='#ff9900', width=1.5)), row=1, col=1)
+                    fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA20'], mode='lines', name='MA20 (月線)', line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
+                    fig_k.add_trace(go.Scatter(x=df_k.index, y=df_k['MA200'], mode='lines', name='MA200 (年線)', line=dict(color='#ef4444', width=2)), row=1, col=1)
+                    fig_k.add_trace(go.Bar(x=df_k.index, y=df_k['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
+                    
+                    last_6mo = df_k.index.max() - pd.Timedelta(days=180)
+                    fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=1, col=1)
+                    fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=2, col=1)
+                    fig_k.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=10, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
+                    st.plotly_chart(fig_k, use_container_width=True)
+        except: st.error("圖表載入失敗，請確認網路或代碼。")
