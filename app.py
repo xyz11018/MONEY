@@ -8,8 +8,7 @@ import pandas as pd
 import json
 import os
 import re
-import numpy as np
-import requests  # 新增 requests 處理官方 API 呼叫
+import requests
 
 # ==========================================
 # 1. 頁面配置與專業金融視覺優化
@@ -28,7 +27,6 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     
-    /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600;}
@@ -45,7 +43,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🚀 終極智慧解析引擎 (直連 Yahoo 原生 API，完美支援中文)
+# 2. 🧠 終極智慧大腦：中英文與代碼秒速解析引擎
 # ==========================================
 def resolve_ticker(user_input):
     t = user_input.strip()
@@ -54,29 +52,51 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 核心解法：直接呼叫 Yahoo Finance 原生搜尋 API (掛上台灣語系參數)
+    # 1. 內建台美股熱門標的字典 (完美解決 Yahoo 阻擋雲端 API 的問題)
+    local_map = {
+        "台積電": "2330.TW", "台灣積體電路": "2330.TW", "鴻海": "2317.TW", "聯發科": "2454.TW",
+        "廣達": "2382.TW", "台達電": "2308.TW", "富邦金": "2881.TW", "國泰金": "2882.TW",
+        "中華電": "2412.TW", "日月光": "3711.TW", "中信金": "2891.TW", "長榮": "2603.TW",
+        "陽明": "2609.TW", "萬海": "2615.TW", "玉山金": "2884.TW", "兆豐金": "2886.TW",
+        "台新金": "2887.TW", "元大金": "2885.TW", "第一金": "2892.TW", "合庫金": "5880.TW",
+        "緯創": "3231.TW", "大立光": "3008.TW", "聯電": "2303.TW", "智邦": "2345.TW",
+        "奇鋐": "3017.TW", "技嘉": "2376.TW", "微星": "2377.TW", "華碩": "2353.TW",
+        "緯穎": "6669.TW", "啟碁": "6285.TW", "穩懋": "3105.TWO", "旺宏": "2337.TW",
+        "0050": "0050.TW", "台灣50": "0050.TW", "0056": "0056.TW", "高股息": "0056.TW",
+        "00878": "00878.TW", "00919": "00919.TW", "00929": "00929.TW", "00631L": "00631L.TW",
+        "正2": "00631L.TW", "00670L": "00670L.TW", "00680L": "00680L.TW",
+        "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA", "亞馬遜": "AMZN",
+        "谷歌": "GOOGL", "超微": "AMD", "META": "META", "網飛": "NFLX"
+    }
+    
+    # 模糊比對本地大腦字典 (例如輸入 "台灣積體電路製造" 會自動命中 "台灣積體電路")
+    for key, val in local_map.items():
+        if key in t or t in key:
+            return val
+
+    # 2. 數字探測引擎：若為純數字/數字帶英文字母 (如 3105, 2330)，自動判斷上市或上櫃
+    if re.match(r'^\d+[A-Z]?$', t_upper):
+        try:
+            if yf.Ticker(f"{t_upper}.TW").fast_info.get('lastPrice'): return f"{t_upper}.TW"
+        except: pass
+        try:
+            if yf.Ticker(f"{t_upper}.TWO").fast_info.get('lastPrice'): return f"{t_upper}.TWO"
+        except: pass
+        return f"{t_upper}.TW"
+
+    # 3. 備援搜尋 API (當前兩道防線都沒命中時才使用)
     try:
-        url = "https://query2.finance.yahoo.com/v1/finance/search"
-        params = {'q': t, 'lang': 'zh-Hant-TW', 'region': 'TW', 'quotesCount': 5}
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        
-        r = requests.get(url, params=params, headers=headers, timeout=5)
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        r = requests.get(url, headers=headers, timeout=3)
         if r.status_code == 200:
             quotes = r.json().get('quotes', [])
             if quotes:
-                # 優先抓取台灣市場代碼 (如果是輸入中文，優先配對台股)
                 for q in quotes:
                     sym = q.get('symbol', '').upper()
-                    if sym.endswith(".TW") or sym.endswith(".TWO"):
-                        return sym
-                # 若無台股，回傳搜尋到的第一筆 (例如輸入 '蘋果' -> AAPL)
+                    if sym.endswith(".TW") or sym.endswith(".TWO"): return sym
                 return quotes[0].get('symbol', '').upper()
-    except:
-        pass
-    
-    # 備用防線：如果 API 網路延遲且輸入為純數字，直接預設為台股上市
-    if re.match(r'^\d+$', t_upper):
-        return f"{t_upper}.TW"
+    except: pass
         
     return t_upper
 
@@ -95,7 +115,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 強制即時化數據引擎 
+# 3. 強制即時化數據引擎 (包含年線與回撤)
 # ==========================================
 def fetch_market_data(ticker):
     """回傳最新現價、日期、年線MA200、52週高點，計算回撤率與乖離率"""
@@ -187,7 +207,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業戰術面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼（如: 2330）」或「中文名稱（如: 台積電）」，系統會自動連結。")
+        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼（如: 2330）」或「中文名稱（如: 台積電）」，系統會自動智慧連結。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -359,10 +379,12 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
+            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2 = st.columns(2)
+            sc1, sc2, sc3 = st.columns(3)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"當前大盤恐慌指數", f"{current_vix:.2f} ({vix_status})")
+            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
+            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -382,7 +404,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (完美支援中文搜尋)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -423,4 +445,6 @@ elif app_mode == "🔍 全球 K 線分析":
                     fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=2, col=1)
                     fig_k.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=10, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                     st.plotly_chart(fig_k, use_container_width=True)
+                else:
+                    st.error("⚠️ 查無此股票之歷史 K 線資料，請確認名稱是否正確。")
         except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
