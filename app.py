@@ -9,6 +9,7 @@ import json
 import os
 import re
 import numpy as np
+import requests  # 新增 requests 處理官方 API 呼叫
 
 # ==========================================
 # 1. 頁面配置與專業金融視覺優化
@@ -44,45 +45,36 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 智慧代碼與名稱雙向解析引擎 (全新升級)
+# 2. 🚀 終極智慧解析引擎 (直連 Yahoo 原生 API，完美支援中文)
 # ==========================================
 def resolve_ticker(user_input):
-    """支援輸入純數字代碼(2330)、中文名稱(台積電)或美股代碼(AAPL)，自動秒速解析"""
     t = user_input.strip()
     if not t: return ""
     t_upper = t.upper()
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 智慧模糊雙向搜尋
+    # 核心解法：直接呼叫 Yahoo Finance 原生搜尋 API (掛上台灣語系參數)
     try:
-        res = yf.Search(t, max_results=5).quotes
-        if res:
-            # 優先尋找符合的台灣市場代碼 (.TW 或 .TWO)
-            for q in res:
-                sym = q['symbol'].upper()
-                # 如果輸入的是純數字，且搜尋結果代碼開頭吻合
-                if re.match(r'^\d+$', t_upper):
-                    if sym.startswith(t_upper) and (sym.endswith(".TW") or sym.endswith(".TWO")):
-                        return sym
-                else:
-                    # 如果輸入的是中文名稱，只要是台股就優先回傳
+        url = "https://query2.finance.yahoo.com/v1/finance/search"
+        params = {'q': t, 'lang': 'zh-Hant-TW', 'region': 'TW', 'quotesCount': 5}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        
+        r = requests.get(url, params=params, headers=headers, timeout=5)
+        if r.status_code == 200:
+            quotes = r.json().get('quotes', [])
+            if quotes:
+                # 優先抓取台灣市場代碼 (如果是輸入中文，優先配對台股)
+                for q in quotes:
+                    sym = q.get('symbol', '').upper()
                     if sym.endswith(".TW") or sym.endswith(".TWO"):
                         return sym
-            
-            # 次優先：如果輸入的是純數字，直接回傳第一個代碼開頭相符的項目
-            if re.match(r'^\d+$', t_upper):
-                for q in res:
-                    sym = q['symbol'].upper()
-                    if sym.startswith(t_upper):
-                        return sym
-                        
-            # 最終備援：直接回傳第一筆搜尋結果 (例如美股名稱或代碼)
-            return res[0]['symbol'].upper()
+                # 若無台股，回傳搜尋到的第一筆 (例如輸入 '蘋果' -> AAPL)
+                return quotes[0].get('symbol', '').upper()
     except:
         pass
     
-    # 若搜尋引擎離線且為純數字，預設補上 .TW 作為防線
+    # 備用防線：如果 API 網路延遲且輸入為純數字，直接預設為台股上市
     if re.match(r'^\d+$', t_upper):
         return f"{t_upper}.TW"
         
@@ -108,6 +100,7 @@ def get_leverage(ticker):
 def fetch_market_data(ticker):
     """回傳最新現價、日期、年線MA200、52週高點，計算回撤率與乖離率"""
     if ticker == "CASH": 
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
         return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
     try:
         t_obj = yf.Ticker(ticker)
@@ -273,11 +266,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 action_text = ""
                 
                 if item["ticker"] == "CASH":
-                    currency_str = "TWD" if is_tw_mode else "USD"
-                    unit_str = "元" if is_tw_mode else "美元"
                     adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
-                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} {unit_str}"
-                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
+                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
+                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} 單位"
                     else: action_text = "無需調整"
                     
                     c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>TWD/USD 保留款</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
@@ -368,12 +359,10 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
-            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2, sc3 = st.columns(3)
+            sc1, sc2 = st.columns(2)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
-            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            sc2.metric(f"當前大盤恐慌指數", f"{current_vix:.2f} ({vix_status})")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -393,10 +382,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (支援中文與代碼智慧搜尋)
+# 6. 分頁：全球 K 線分析 (完美支援中文搜尋)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
-    # 標題維持純淨，將提示移入下方輸入框中
     st.title("🔍 全球金融標的技術分析")
     
     if market_choice == "台灣加權指數 (台股)": default_ticker = "^TWII"
@@ -406,14 +394,13 @@ elif app_mode == "🔍 全球 K 線分析":
     else: default_ticker = "6285"
     
     if market_choice == "自訂輸入個股":
-        # 💥 此處提示標記已全面優化 💥
         raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (如: 2330 或 台積電)：", default_ticker)
     else: raw_ticker_input = default_ticker
     
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
         try:
-            with st.spinner("載入量化技術圖表中..."):
+            with st.spinner("正在智慧解析並載入量化技術圖表中..."):
                 df_k = yf.download(ticker_input, period="2y", interval="1d", progress=False)
                 if not df_k.empty:
                     if isinstance(df_k.columns, pd.MultiIndex): df_k.columns = df_k.columns.get_level_values(0)
@@ -436,4 +423,4 @@ elif app_mode == "🔍 全球 K 線分析":
                     fig_k.update_xaxes(range=[last_6mo, df_k.index.max()], row=2, col=1)
                     fig_k.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=10, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                     st.plotly_chart(fig_k, use_container_width=True)
-        except: st.error("圖表載入失敗，請確認網路或代碼。")
+        except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
