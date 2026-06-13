@@ -92,9 +92,9 @@ def resolve_ticker(user_input):
         "META": "META", "網飛": "NFLX"
     }
     
-    # 第一關：絕對精確比對
+    # 第一關：絕對精確比對 (修正了這裡的變數名稱)
     if t in local_map: return local_map[t]
-    if t in dynamic_dict: return dynamic_dict[t]
+    if t in dynamic_tw_dict: return dynamic_tw_dict[t]
     
     # 第二關：數字探測引擎 (若輸入為純數字如 2344，直接秒殺，不走字串比對)
     if re.match(r'^\d+[A-Z]?$', t_upper):
@@ -361,7 +361,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
-                    if is_bear and item.get("leverage", 1.0) >= 2.0: lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️破線)</span>"
 
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
