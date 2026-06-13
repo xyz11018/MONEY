@@ -63,7 +63,10 @@ def get_tw_stock_dict():
         res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=5)
         if res.status_code == 200:
             for item in res.json():
-                tw_dict[item["Name"].strip()] = f"{item['Code'].strip()}.TW"
+                name = item.get("Name", "").strip().replace(" ", "")
+                code = item.get("Code", "").strip()
+                if name and code:
+                    tw_dict[name] = f"{code}.TW"
     except: pass
     
     # 2. 抓取上櫃股票 (TPEx)
@@ -71,13 +74,16 @@ def get_tw_stock_dict():
         res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=5)
         if res.status_code == 200:
             for item in res.json():
-                tw_dict[item["CompanyName"].strip()] = f"{item['SecuritiesCompanyCode'].strip()}.TWO"
+                name = item.get("CompanyName", "").strip().replace(" ", "")
+                code = item.get("SecuritiesCompanyCode", "").strip()
+                if name and code:
+                    tw_dict[name] = f"{code}.TWO"
     except: pass
     
     return tw_dict
 
 def resolve_ticker(user_input):
-    t = user_input.strip()
+    t = user_input.strip().replace(" ", "")
     if not t: return ""
     t_upper = t.upper()
     
@@ -107,7 +113,7 @@ def resolve_ticker(user_input):
         except: pass
         return f"{t_upper}.TW"
 
-    # 第三關：模糊智慧比對
+    # 第三關：超級智慧模糊比對 (解決字串包涵差異，如輸入"華邦"比對"華邦電")
     for name, ticker in local_map.items():
         if t in name or name in t: return ticker
     for name, ticker in dynamic_tw_dict.items():
@@ -517,7 +523,8 @@ elif app_mode == "🔍 全球 K 線分析":
                                 3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                                 """
                                 try:
-                                    model = genai.GenerativeModel("gemini-1.5-flash")
+                                    # 🛠️ 核心修正：更換為最新的標準穩定模型代碼
+                                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
                                     response = model.generate_content(prompt)
                                     st.info(response.text)
                                 except Exception as e:
