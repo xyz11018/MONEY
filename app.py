@@ -33,7 +33,6 @@ yf_session.headers.update({
 # ==========================================
 st.set_page_config(layout="wide", page_title="機構級量化決策終端", page_icon="🏦")
 
-# 💡 隱私模式全域變數設定
 privacy_mode = st.sidebar.toggle("👁️ 隱藏金額防窺 (Privacy Mode)", value=False)
 
 def fmt_money(val, decimals=0):
@@ -56,14 +55,8 @@ st.markdown("""
     .us-market { border-left: 5px solid #2563eb; }
     .global-market { border-left: 5px solid #8b5cf6; }
     
-    .pro-card {
-        background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
-        padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); height: 100%;
-    }
-    .kpi-card {
-        background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
-        padding: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center;
-    }
+    .pro-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); height: 100%; }
+    .kpi-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; }
     
     .ticker-display { font-size: 1.6rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
     .stock-name-display { font-size: 0.9rem; color: #64748b; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
@@ -203,12 +196,15 @@ def fetch_market_data(ticker):
     except: pass
     return None
 
+# ==========================================
+# 4. 🗂️ 全新多維度資料庫管理 (建倉與目標分離)
+# ==========================================
 def load_portfolio():
     default_data = {
         "global_goals": {"target_amt": 20000000, "target_years": 10},
         "schemes": {
-            "🎯 台股主力配置": {"market": "TW", "assets": []},
-            "🎯 美股主力配置": {"market": "US", "assets": []}
+            "🎯 台股主力配置": {"market": "TW", "lots": [], "targets": {}},
+            "🎯 美股主力配置": {"market": "US", "lots": [], "targets": {}}
         }
     }
     if os.path.exists(DB_FILE):
@@ -216,7 +212,23 @@ def load_portfolio():
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
                 if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
-                if "schemes" in data: return data
+                
+                # 💡 自動遷移舊版資料結構至全新分離式架構
+                for s_name, s_data in data.get("schemes", {}).items():
+                    if "assets" in s_data and "lots" not in s_data:
+                        s_data["lots"] = []
+                        s_data["targets"] = {}
+                        for a in s_data["assets"]:
+                            tk = a.get("ticker", "")
+                            if tk:
+                                clean_tk = tk.split('.')[0]
+                                s_data["lots"].append({
+                                    "ticker": tk, "shares": a.get("init_shares", 0),
+                                    "buy_price": a.get("buy_price", a.get("init_price", 0)), "buy_date": a.get("buy_date", "")
+                                })
+                                s_data["targets"][clean_tk] = a.get("target_pct", 0.0)
+                        del s_data["assets"]
+                return data
         except: pass
     return default_data
 
@@ -225,17 +237,17 @@ def save_portfolio(data):
 
 db_data = load_portfolio()
 
-# 💡 聚合相同標的模組 (核心修復 Req 1: 分批建倉合併)
-def aggregate_assets(assets):
+# 💡 全局資產聚合函數 (合併同代碼分批買進的部位，並注入全域目標權重)
+def aggregate_lots(lots, targets):
     agg = {}
-    for a in assets:
-        tk = a["ticker"]
+    for lot in lots:
+        tk = lot["ticker"]
+        clean_tk = tk.split('.')[0]
         if tk not in agg:
-            agg[tk] = {"ticker": tk, "init_shares": 0.0, "target_pct": 0.0, "total_cost": 0.0, "leverage": a.get("leverage", 1.0), "is_tw": a.get("is_tw", True)}
-        shares = float(a.get("init_shares", 0))
-        price = float(a.get("buy_price", 0))
+            agg[tk] = {"ticker": tk, "init_shares": 0.0, "total_cost": 0.0, "target_pct": targets.get(clean_tk, 0.0)}
+        shares = float(lot.get("shares", 0))
+        price = float(lot.get("buy_price", 0))
         agg[tk]["init_shares"] += shares
-        agg[tk]["target_pct"] += float(a.get("target_pct", 0))
         if tk == "CASH": agg[tk]["total_cost"] += shares
         else: agg[tk]["total_cost"] += shares * price
     
@@ -244,6 +256,7 @@ def aggregate_assets(assets):
         if v["init_shares"] > 0:
             v["buy_price"] = 1.0 if tk == "CASH" else (v["total_cost"] / v["init_shares"])
         else: v["buy_price"] = 0.0
+        v["leverage"] = get_leverage(tk)
         res.append(v)
     return res
 
@@ -298,22 +311,8 @@ st.sidebar.markdown("---")
 app_mode = st.sidebar.radio("模組導覽 (Modules)：", ["🏠 總體財富總覽", "🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理", "🔍 全球市場量化終端"])
 st.sidebar.markdown("---")
 
-# 💡 左側邊欄：分批建倉明細 (Req 2)
-if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理"]:
-    current_scheme_name = "🎯 台股主力配置" if "台股" in app_mode else "🎯 美股主力配置"
-    raw_assets = db_data["schemes"][current_scheme_name]["assets"]
-    st.sidebar.markdown("### 📜 分批建倉明細 (Trade Lots)")
-    if raw_assets:
-        df_lots = pd.DataFrame(raw_assets)
-        df_lots['ticker'] = df_lots['ticker'].apply(lambda x: x.split('.')[0])
-        df_lots = df_lots[['ticker', 'init_shares', 'buy_price', 'buy_date']]
-        df_lots.columns = ['標的', '數量', '買價', '日期']
-        st.sidebar.dataframe(df_lots, use_container_width=True, hide_index=True)
-    else:
-        st.sidebar.info("尚無建倉紀錄")
-
 # ==========================================
-# 5. 主功能：總體財富總覽 (Dashboard - Req 3 & 4)
+# 5. 主功能：總體財富總覽 (Dashboard)
 # ==========================================
 if app_mode == "🏠 總體財富總覽":
     st.markdown("<h1>🏠 總體財富總覽 (Wealth Dashboard)</h1>", unsafe_allow_html=True)
@@ -330,7 +329,7 @@ if app_mode == "🏠 總體財富總覽":
             st.success("目標儲存成功！")
             st.rerun()
 
-    total_aum_ntd = 0
+    total_aum_ntd, tw_aum_ntd, us_aum_ntd = 0, 0, 0
     total_cost_ntd = 0
     total_div_ntd = 0
     combined_hist_df = pd.DataFrame()
@@ -339,8 +338,9 @@ if app_mode == "🏠 總體財富總覽":
     with st.spinner("🔄 正在聚合全球資產與歷史軌跡..."):
         for scheme_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
             is_tw = "台股" in scheme_name
-            raw_assets = db_data["schemes"][scheme_name]["assets"]
-            agg_assets = aggregate_assets(raw_assets)
+            raw_lots = db_data["schemes"][scheme_name]["lots"]
+            raw_targets = db_data["schemes"][scheme_name]["targets"]
+            agg_assets = aggregate_lots(raw_lots, raw_targets)
             
             for asset in agg_assets:
                 m_data = fetch_market_data(asset["ticker"])
@@ -370,6 +370,8 @@ if app_mode == "🏠 總體財富總覽":
                                 else: combined_hist_df = combined_hist_df.join(val_series.rename(asset["ticker"]), how='outer')
 
                     total_aum_ntd += now_val_ntd
+                    if is_tw: tw_aum_ntd += now_val_ntd
+                    else: us_aum_ntd += now_val_ntd
                     total_cost_ntd += asset_cost_ntd
                     total_div_ntd += (now_val_ntd * yield_pct)
 
@@ -402,26 +404,21 @@ if app_mode == "🏠 總體財富總覽":
     g4.markdown(f"<div class='kpi-card' style='border-left: 5px solid #3b82f6;'><div class='data-label'>真實累積報酬率 (Cum. Return)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown("### 📊 全球資產概況 (Global AUM)")
-    avg_div_rate = (total_div_ntd / total_aum_ntd * 100) if total_aum_ntd > 0 else 0
+    st.markdown("### 📊 全球資產板塊概況 (Global AUM)")
     
     kpi_html = f"""
     <div style='display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;'>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #3b82f6;'>
-            <div class='data-label'>總投資市值 (Total AUM)</div>
-            <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_aum_ntd)}</div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #8b5cf6; background-color:#f8fafc;'>
+            <div class='data-label' style='color:#475569;'>🌍 全球總投資市值 (Total)</div>
+            <div style='font-size:2.2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_aum_ntd)}</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #10b981;'>
-            <div class='data-label'>今年報酬率 (YTD Return)</div>
-            <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_ytd >=0 else "#ef4444"};'>{return_ytd:+.2f}%</div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #059669;'>
+            <div class='data-label'>🇹🇼 台股總部位 (TW Market)</div>
+            <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(tw_aum_ntd)}</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #f59e0b;'>
-            <div class='data-label'>近一年報酬 (1-Year TWR)</div>
-            <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_1y >=0 else "#ef4444"};'>{return_1y:+.2f}%</div>
-        </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #06b6d4;'>
-            <div class='data-label'>預估年被動收入 (Est. Div)</div>
-            <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_div_ntd)}</div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #2563eb;'>
+            <div class='data-label'>🇺🇸 美股總部位 (US Market)</div>
+            <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(us_aum_ntd)}</div>
         </div>
     </div>
     """
@@ -456,68 +453,74 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
     current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
     currency_symbol = "NTD" if is_tw_mode else "USD"
     
-    threshold = st.sidebar.slider("⚖️ 再平衡觸發門檻 (Threshold %)", 0.0, 10.0, 2.0, 0.5)
-    current_assets_len = len(db_data["schemes"][current_scheme_name]["assets"])
-    num_assets = st.sidebar.number_input("🔢 部位清單展開數", value=max(3, current_assets_len), min_value=1)
-
     st.markdown(f'<h1>💼 {market_label} 量化部位管理 (Portfolio Management)</h1>', unsafe_allow_html=True)
 
-    with st.expander(f"⚙️ 點此編輯交易日誌與庫存戰略", expanded=(not db_data["schemes"][current_scheme_name]["assets"])):
-        st.info(f"💡 提示：支援分批買進！即便輸入相同代碼，系統也會自動加總計算歷史市值。")
-        cols = st.columns([1.5, 1.5, 1.2, 1.2, 1.2])
-        cols[0].markdown("**代碼 或 名稱**")
-        cols[1].markdown("**持有數量 (現金填金額)**")
-        cols[2].markdown("**戰略目標 (%)**")
-        cols[3].markdown("**買進均價 (成本)**")
-        cols[4].markdown("**買進日期**")
+    # 💡 核心更新：使用 st.data_editor 取代舊版輸入，實現分批建倉與權重分離
+    with st.expander(f"⚙️ 點此管理建倉日誌與戰略權重", expanded=(not db_data["schemes"][current_scheme_name]["lots"])):
+        st.info("💡 **第一步**：像使用 Excel 一樣，在下方表格自由新增、修改您的每一筆【分批買進紀錄】。")
         
-        new_setup = []
-        for i in range(int(num_assets)):
-            r_cols = st.columns([1.5, 1.5, 1.2, 1.2, 1.2])
-            hist = db_data["schemes"][current_scheme_name]["assets"][i] if i < len(db_data["schemes"][current_scheme_name]["assets"]) else {"ticker": "", "init_shares": 0, "target_pct": 0, "buy_price": 0, "buy_date": ""}
-            display_tk = hist["ticker"].split('.')[0] if hist.get("ticker") else ""
-            safe_shares = int(max(0, float(hist.get("init_shares", 0))))
-            safe_pct = float(hist.get("target_pct", 0.0))
-            safe_buy_p = float(hist.get("buy_price", 0.0))
-            safe_buy_d = hist.get("buy_date", "")
-            
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed").strip()
-            shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0, value=safe_shares, step=100, format="%d", label_visibility="collapsed")
-            pct_input = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
-            buy_p_input = r_cols[3].number_input(f"bp_{i}", min_value=0.0, value=safe_buy_p, step=1.0, label_visibility="collapsed")
-            buy_d_input = r_cols[4].text_input(f"bd_{i}", value=safe_buy_d, placeholder="YYYY-MM-DD", label_visibility="collapsed")
-            
-            if raw_tk: new_setup.append({"raw_ticker": raw_tk, "shares_input": shares_input, "target_pct": pct_input, "buy_price": buy_p_input, "buy_date": buy_d_input})
+        lots_df = pd.DataFrame(db_data["schemes"][current_scheme_name].get("lots", []))
+        if lots_df.empty:
+            lots_df = pd.DataFrame(columns=["ticker", "shares", "buy_price", "buy_date"])
+        else:
+            lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
         
-        if st.button(f"📌 鎖定庫存並更新配置", type="primary"):
-            locked_assets = []
-            error_tickers = []
-            with st.spinner('同步最新報價中...'):
-                for item in new_setup:
-                    real_ticker, _ = smart_resolve_ticker(item["raw_ticker"], api_key)
-                    m_data = fetch_market_data(real_ticker) if real_ticker else None
-                    lev = get_leverage(real_ticker) if real_ticker else 1.0
-                    if m_data and m_data["price"] > 0:
-                        locked_assets.append({
-                            "ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, 
-                            "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode,
-                            "buy_price": item["buy_price"], "buy_date": item["buy_date"]
-                        })
-                    else: error_tickers.append(item["raw_ticker"])
+        lots_df.columns = ["標的(Ticker)", "股數(Shares)", "買進均價(Price)", "日期(YYYY-MM-DD)"]
+        
+        # 開啟動態增刪列的資料編輯器
+        edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
+        
+        st.markdown("<hr style='margin: 1rem 0;'>", unsafe_allow_html=True)
+        st.info("💡 **第二步**：系統已自動統整您的持股標的，請為它們設定長期的【戰略目標權重 %】。")
+        
+        # 自動抓取獨立的標的代碼
+        unique_tickers = edited_lots["標的(Ticker)"].dropna().unique()
+        unique_tickers = [str(tk).strip().upper() for tk in unique_tickers if str(tk).strip() != ""]
+        
+        old_targets = db_data["schemes"][current_scheme_name].get("targets", {})
+        target_data = []
+        for tk in unique_tickers:
+            clean_tk = tk.split('.')[0]
+            target_data.append({"標的": clean_tk, "目標權重(%)": old_targets.get(clean_tk, 0.0)})
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。")
-            else:
-                db_data["schemes"][current_scheme_name]["assets"] = locked_assets
+        targets_df = pd.DataFrame(target_data)
+        edited_targets = pd.DataFrame()
+        if not targets_df.empty:
+            edited_targets = st.data_editor(targets_df, disabled=["標的"], use_container_width=True, key=f"target_{market_label}")
+        
+        if st.button(f"📌 儲存 {market_label} 庫存與權重配置", type="primary"):
+            with st.spinner('儲存並同步雲端數據中...'):
+                new_lots = []
+                for _, row in edited_lots.iterrows():
+                    tk = str(row["標的(Ticker)"]).strip()
+                    if tk:
+                        real_ticker, _ = smart_resolve_ticker(tk, api_key)
+                        if real_ticker:
+                            new_lots.append({
+                                "ticker": real_ticker,
+                                "shares": float(row["股數(Shares)"] if not pd.isna(row["股數(Shares)"]) else 0),
+                                "buy_price": float(row["買進均價(Price)"] if not pd.isna(row["買進均價(Price)"]) else 0),
+                                "buy_date": str(row["日期(YYYY-MM-DD)"]) if not pd.isna(row["日期(YYYY-MM-DD)"]) else ""
+                            })
+                
+                new_targets = {}
+                if not edited_targets.empty:
+                    for _, row in edited_targets.iterrows():
+                        new_targets[str(row["標的"]).strip()] = float(row["目標權重(%)"])
+                
+                db_data["schemes"][current_scheme_name]["lots"] = new_lots
+                db_data["schemes"][current_scheme_name]["targets"] = new_targets
                 save_portfolio(db_data)
-                st.success(f"🔒 更新成功！")
+                st.success("🔒 儲存成功！")
                 st.rerun()
 
     current_view_data = []
     local_total_val, local_total_exp = 0, 0
+    local_total_dividend = 0
     local_total_cost = 0
     
-    # 💡 呼叫聚合函數，將分批建倉合併為單一標的卡片
-    target_portfolio = aggregate_assets(db_data["schemes"][current_scheme_name]["assets"])
+    # 呼叫聚合函數，將分批建倉合併為單一標的卡片
+    target_portfolio = aggregate_lots(db_data["schemes"][current_scheme_name]["lots"], db_data["schemes"][current_scheme_name]["targets"])
     
     if target_portfolio:
         with st.spinner(f"🔄 正在同步雲端報價與量化指標..."):
@@ -542,13 +545,36 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     local_total_exp += exposure_ntd
                     local_total_cost += asset_cost
                     
+                    try:
+                        if asset["ticker"] != "CASH" and not asset["ticker"].startswith("^"):
+                            yield_pct = float(yf.Ticker(asset["ticker"], session=yf_session).info.get('dividendYield', 0) or 0)
+                        else: yield_pct = 0.0
+                    except: yield_pct = 0.0
+                        
+                    local_total_dividend += (now_val_ntd * yield_pct)
+                    
                     current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "asset_cost": asset_cost, "exposure_ntd": exposure_ntd, 
                                               "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"],
                                               "rsi": m_data["rsi"], "kd_k": m_data["kd_k"]})
 
         if current_view_data:
+            # 左下角新增建倉明細顯示
+            st.markdown(f"### 📜 {market_label} 歷史建倉明細 (Trade Lots)")
+            df_lots_display = pd.DataFrame(db_data["schemes"][current_scheme_name]["lots"])
+            if not df_lots_display.empty:
+                df_lots_display['ticker'] = df_lots_display['ticker'].apply(lambda x: x.split('.')[0])
+                df_lots_display.columns = ['標的', '股數/金額', '買進均價', '日期']
+                # 隱私模式處理
+                if privacy_mode:
+                    df_lots_display['股數/金額'] = "****"
+                    df_lots_display['買進均價'] = "****"
+                st.dataframe(df_lots_display, use_container_width=True, hide_index=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">動態量化監控盤 (Live Monitoring)</div>', unsafe_allow_html=True)
             
+            threshold = st.slider("⚖️ 再平衡觸發門檻 (Threshold %)", 0.0, 10.0, 2.0, 0.5)
+
             for item in current_view_data:
                 c = st.columns([1.6, 1.4, 1.4, 1.4, 1.4, 2.8])
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
@@ -657,7 +683,7 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                         st.info(model.generate_content(prompt).text)
 
 # ==========================================
-# 6. 分頁：全球市場量化終端
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球市場量化終端":
     st.sidebar.header("🌍 大盤快搜 (Indices)")
@@ -673,7 +699,6 @@ elif app_mode == "🔍 全球市場量化終端":
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = ""
     
-    # 💡 更新：移除 6285 預設值 (Req 5)
     if market_choice == "自訂輸入個股": 
         target_to_parse = st.text_input("輸入欲分析的代碼或股名 (輸入完畢按 Enter)：", value="", placeholder="例如：2330 或 台積電")
     else: 
@@ -723,10 +748,9 @@ elif app_mode == "🔍 全球市場量化終端":
                         st.markdown("### 📊 量化多維戰情儀表板")
                         cc1, cc2, cc3 = st.columns(3)
                         
-                        # 💡 專業處理大盤單位 (Req 1)
                         if ticker_input.startswith("^"):
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{last_close:,.2f} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {ma200_val:,.2f}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem;'>回撤率: {dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {high_52w:,.2f} 點</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{fmt_money(last_close)} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem;'>回撤率: {dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {fmt_money(high_52w)} 點</div></div>", unsafe_allow_html=True)
                             pe_str, yd_str, sec_str = "大盤指數", "大盤指數", "大盤指數"
                         else:
                             try:
@@ -770,7 +794,7 @@ elif app_mode == "🔍 全球市場量化終端":
                                         你現在是一位頂級的量化交易分析師。請根據以下最新抓取的數據，提供操作建議：
                                         標的：{clean_title} {zh_name}
                                         K線週期：{k_period}
-                                        最新價位：{last_close:.2f}
+                                        最新收盤價：{last_close:.2f}
                                         關鍵長天期均線 ({n3})：{ma200_val:.2f}
                                         14期 RSI：{rsi_val:.1f} ({rsi_status})
                                         本益比：{pe_str} | 殖利率：{yd_str} | 所屬板塊：{sec_str}
