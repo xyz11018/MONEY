@@ -64,58 +64,69 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 終極強固解析引擎 (擴充版本地字典)
+# 2. 🧠 終極 AI 萬能解析引擎 (取代不穩定的 Yahoo 搜尋)
 # ==========================================
-STOCK_NAME_DICT = {
-    "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
-    "2317": "鴻海", "2603": "長榮", "0050": "元大台灣50", "00631L": "元大台灣50正2",
-    "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
-    "2303": "聯電", "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2609": "陽明",
-    "3231": "緯創", "2308": "台達電", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息",
-    "5498": "凱崴", "2356": "英業達", "2324": "仁寶", "3034": "聯詠", "2379": "瑞昱",
-    "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
-    "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
-    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
-}
-
-def get_stock_name(ticker):
-    clean_tk = ticker.replace('.TW', '').replace('.TWO', '')
-    return STOCK_NAME_DICT.get(clean_tk, "個股標的")
-
-def resolve_ticker(user_input):
+@st.cache_data(show_spinner=False, ttl=3600)
+def smart_resolve_ticker(user_input, api_key=""):
     t = user_input.strip().replace(" ", "")
-    if not t: return ""
+    if not t: return "", ""
     t_upper = t.upper()
     
-    if t_upper in ["現金", "CASH"]: return "CASH"
-    if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
+    if t_upper in ["現金", "CASH"]: return "CASH", "台/外幣保留款"
+    if t_upper.startswith("^"): 
+        idx_map = {"^TWII": "台灣加權指數", "^IXIC": "那斯達克", "^GSPC": "標普500", "^SOX": "費城半導體", "^VIX": "恐慌指數"}
+        return t_upper, idx_map.get(t_upper, "大盤指數")
+        
+    if re.match(r'^[A-Z]+$', t_upper): return t_upper, t_upper
     
-    reverse_map = {v: k+".TW" for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
-    if t in reverse_map: return reverse_map[t]
-    if t in ["華邦"]: return "2344.TW"
+    ticker_result = ""
+    name_result = t
+    is_digit = bool(re.match(r'^\d+$', t))
     
-    if re.match(r'^\d+$', t):
-        for ext in [".TW", ".TWO"]:
-            try:
-                tk_check = f"{t}{ext}"
-                if yf.Ticker(tk_check, session=yf_session).fast_info.get('lastPrice'): return tk_check
-            except: pass
-        return f"{t}.TW"
+    # 內建極速防呆字典 (確保沒輸入 Key 時常用股依然秒解)
+    fast_map = {
+        "啟碁":"6285.TW", "華邦電":"2344.TW", "華邦":"2344.TW", "旺宏":"2337.TW", "台積電":"2330.TW", "聯發科":"2454.TW",
+        "鴻海":"2317.TW", "長榮":"2603.TW", "廣達":"2382.TW", "聯電":"2303.TW", "富邦金":"2881.TW",
+        "凱崴":"5498.TWO", "0050":"0050.TW", "00631L":"00631L.TW", "緯穎":"6669.TW"
+    }
+    if t in fast_map:
+        return fast_map[t], t
+        
+    # --- 🚀 AI 智慧雙向翻譯機 (輸入中文給代碼，輸入代碼給中文) ---
+    if api_key:
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel("gemini-2.5-flash") # 翻譯工作用 2.5 最快最穩
+            if is_digit:
+                prompt = f"請問台灣股票代碼「{t}」的公司簡稱是什麼？以及它是上市(.TW)還是上櫃(.TWO)？請嚴格以「簡稱,代碼加後綴」格式回答（例如：凱崴,5498.TWO），不要有任何其他文字。"
+            else:
+                prompt = f"請問台灣股票「{t}」的完整代碼是什麼？（上市請加 .TW，上櫃請加 .TWO）。請嚴格以「簡稱,代碼加後綴」格式回答（例如：凱崴,5498.TWO），不要有任何其他文字。"
+                
+            res = model.generate_content(prompt).text.strip()
+            if "," in res:
+                parts = res.split(',')
+                name_result = parts[0].strip()
+                ticker_result = parts[1].strip()
+        except:
+            pass
             
+    # 降級防呆：如果 AI 查不到，或是尚未輸入 API Key
+    if not ticker_result:
+        if is_digit: 
+            ticker_result = f"{t}.TW" # 數字預設先給上市
+        else: 
+            return "", "" # 沒 Key 又打中文，直接失敗
+            
+    ticker_result = ticker_result.upper().replace(" ", "")
+    
+    # 雙重保險驗證 yfinance (如果 .TW 找不到，自動轉 .TWO 嘗試)
     try:
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
-        r = requests.get(url, headers=yf_session.headers, timeout=3)
-        if r.status_code == 200:
-            quotes = r.json().get('quotes', [])
-            if quotes:
-                for q in quotes:
-                    sym = q.get('symbol', '').upper()
-                    if sym.endswith(".TW") or sym.endswith(".TWO"): return sym
-                return quotes[0].get('symbol', '').upper()
+        if not yf.Ticker(ticker_result, session=yf_session).fast_info.get('lastPrice'):
+            if ".TW" in ticker_result: ticker_result = ticker_result.replace(".TW", ".TWO")
+            elif ".TWO" in ticker_result: ticker_result = ticker_result.replace(".TWO", ".TW")
     except: pass
     
-    if re.match(r'^[A-Z0-9^.=]+$', t_upper): return t_upper
-    return ""
+    return ticker_result, name_result
 
 def get_leverage(ticker):
     if ticker == "CASH": return 1.0
@@ -192,7 +203,7 @@ vix_status = "⚠️ 極度恐慌" if current_vix >= 25 else ("⚡ 波動加劇"
 st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key", type="password")
+api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (解鎖無限中文搜尋)", type="password")
 if api_key:
     genai.configure(api_key=api_key)
 
@@ -218,7 +229,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 點此調整：持有股數與目標權重 ({market_label})", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：在此修改您的持有股數與目標%，修改完畢後點擊下方按鈕即可更新系統。")
+        st.info(f"💡 提示：輸入 Gemini Key 後，即可直接輸入任何中文股名！修改完畢請點擊下方鎖定按鈕。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -238,16 +249,16 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
             error_tickers = []
-            with st.spinner('正在同步數據中...'):
+            with st.spinner('AI 正在智慧解析股名與同步數據...'):
                 for item in new_setup:
-                    real_ticker = resolve_ticker(item["raw_ticker"])
+                    real_ticker, _ = smart_resolve_ticker(item["raw_ticker"], api_key)
                     m_data = fetch_market_data(real_ticker) if real_ticker else None
                     lev = get_leverage(real_ticker) if real_ticker else 1.0
                     if m_data and m_data["price"] > 0: 
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』即可通關！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認左側是否已填寫 API Key。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -285,7 +296,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
-                zh_name = get_stock_name(item["ticker"])
+                # 取得 AI 解析或字典快取的中文股名
+                _, zh_name = smart_resolve_ticker(item["ticker"], api_key)
                 
                 if item["ticker"] == "CASH":
                     unit_str = "元" if is_tw_mode else "美元"
@@ -384,7 +396,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (🧠 已修復閃退重置與淨空輸入框)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -413,12 +425,11 @@ elif app_mode == "🔍 全球 K 線分析":
     target_to_parse = st.session_state.active_kline_ticker
     
     if target_to_parse:
-        ticker_input = resolve_ticker(target_to_parse)
+        ticker_input, zh_name = smart_resolve_ticker(target_to_parse, api_key)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。由於網路阻擋，若輸入中文失敗，請直接輸入【數字代碼】(例如：凱崴請輸入 5498)。")
+            st.error(f"❌ 查無此標的。若輸入中文失敗，請確認左側是否已填寫 API Key。")
         else:
-            zh_name = get_stock_name(ticker_input)
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
             
             try:
