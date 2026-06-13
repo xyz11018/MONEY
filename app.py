@@ -10,13 +10,12 @@ import os
 import re
 
 # ==========================================
-# 1. 頁面配置與雙主題高對比視覺優化
+# 1. 頁面配置與視覺優化
 # ==========================================
 st.set_page_config(layout="wide", page_title="全球資產動態平衡系統", page_icon="🏦")
 
 st.markdown("""
     <style>
-    /* 質感標題區塊 */
     .market-header { 
         padding: 16px 20px; border-radius: 10px; font-weight: 700; 
         margin-bottom: 20px; font-size: 1.3rem; color: #ffffff !important;
@@ -26,7 +25,6 @@ st.markdown("""
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
     
-    /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
@@ -98,7 +96,8 @@ def save_portfolio(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-@st.cache_data(ttl=3600)
+# 將快取時間從 3600 秒 (1小時) 縮短至 300 秒 (5分鐘)，確保股價絕對即時
+@st.cache_data(ttl=300)
 def fetch_realtime_data(ticker):
     if ticker == "CASH": return 1.0 
     try:
@@ -144,11 +143,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業分析面板</h1>', unsafe_allow_html=True)
     
-    # 📌 獨立設定區 (改為手動輸入真實持股)
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總金額」。")
+        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總數量」。")
         cols = st.columns([2, 2, 2])
-        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**目標權重%**"); cols[2].markdown("**持有股數 / 現金金額**")
+        # 欄位對調，並且移除「現金金額」贅字
+        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
         new_setup = []
         for i in range(int(num_assets)):
@@ -156,20 +155,21 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "target_pct": 0, "init_shares": 0}
             
             display_tk = hist["ticker"].replace(".TWO", "").replace(".TW", "") if (".TW" in hist.get("ticker", "") or ".TWO" in hist.get("ticker", "")) else hist.get("ticker", "")
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼 或 現金").strip()
             
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            pct = r_cols[1].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
-            shares_input = r_cols[2].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼 或 現金").strip()
+            # 股數與權重輸入位置對調
+            shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
+            pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
             
             if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "shares_input": shares_input})
         
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
             error_tickers = []
-            with st.spinner('正在解析代碼並同步市場數據...'):
+            with st.spinner('正在解析代碼並同步即時市場數據...'):
                 for item in new_setup:
                     real_ticker = resolve_ticker(item["raw_ticker"])
                     p = fetch_realtime_data(real_ticker)
@@ -202,7 +202,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     lev = asset.get("leverage", 1.0)
                     is_tw = asset.get("is_tw", is_tw_mode)
                     
-                    # 計算市值邏輯：大盤/現金使用金額，股票使用股數*價格
                     if asset["ticker"].startswith("^"):
                         now_val_ntd = asset.get("init_shares", 0) * (now_p / asset.get("init_price", now_p))
                     elif asset["ticker"] == "CASH":
@@ -225,22 +224,45 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
                 diff = real_pct - item["target_pct"]
                 
+                # 計算達到目標需調整的股數/金額
+                target_val = local_total_val * (item["target_pct"] / 100.0)
+                diff_val = target_val - item["now_val_ntd"]
+                action_text = ""
+                
                 if item["ticker"] == "CASH":
-                    currency_str = "TWD" if is_tw_mode else "USD"
-                    unit_str = "元" if is_tw_mode else "美元"
+                    adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
+                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
+                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} 單位"
+                    else: action_text = "無需調整"
+                elif item["ticker"].startswith("^"):
+                    adjust_amt = int(diff_val)
+                    if adjust_amt > 0: action_text = f"需加碼: {adjust_amt:,} 單位"
+                    elif adjust_amt < 0: action_text = f"需減碼: {abs(adjust_amt):,} 單位"
+                    else: action_text = "無需調整"
+                else:
+                    price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
+                    adjust_shares = int(diff_val / price_ntd) if price_ntd > 0 else 0
+                    if adjust_shares > 0: action_text = f"需買進: {adjust_shares:,} 股"
+                    elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
+                    else: action_text = "無需調整"
+
+                if item["ticker"] == "CASH":
                     c[0].markdown(f"<div class='ticker-display'>💵 現金</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>持倉總額:</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {unit_str}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div>", unsafe_allow_html=True)
                 else:
                     clean_name = item["ticker"].replace('.TWO', '').replace('.TW', '')
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持股總數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>{'📊 投入數量:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'單位' if item['ticker'].startswith('^') else '股'}</div>", unsafe_allow_html=True)
                 
                 c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div>", unsafe_allow_html=True)
                 c[3].markdown(f"<div class='data-label'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                 c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x</div><div class='data-label' style='margin-top:4px;'>總曝險額:</div><div class='data-value'>NTD {int(item['exposure_ntd']):,}</div>", unsafe_allow_html=True)
                 
-                if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(真實佔比: {real_pct:.1f}%)")
-                else: c[5].success(f"✅ 平衡區間\n(真實佔比: {real_pct:.1f}%)")
+                # 加入再平衡具體買賣指示
+                if abs(diff) > threshold: 
+                    c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+                else: 
+                    c[5].success(f"✅ 平衡區間\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
 
         # 📌 底部指標與圖表
         st.markdown("---")
@@ -330,7 +352,6 @@ elif app_mode == "🔍 全球 K 線分析":
                         news_list = t_obj.news
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
                         
-                        # 雙引擎防護：如果有抓到新聞，就顯示卡片；如果 API 為空，就提供可靠的備用搜尋按鈕
                         if news_list and len(news_list) > 0:
                             bull_keywords = ['創高', '大漲', '營收新高', '利多', '優於預期', '暴增', '買進', '成長', '噴發', 'HIGH', 'GROWTH', 'BULL', 'BEAT', 'UPGRADE']
                             bear_keywords = ['衰退', '大跌', '利空', '低於預期', '虧損', '賣出', '修正', '重挫', 'DROP', 'FALL', 'BEAR', 'MISS', 'DOWNGRADE']
@@ -341,12 +362,9 @@ elif app_mode == "🔍 全球 K 線分析":
                                 link = news.get('link', '')
                                 
                                 title_upper = title.upper()
-                                if any(k in title_upper for k in bull_keywords):
-                                    tag = "<span style='color:#10b981; font-weight:bold;'>🟢 潛在利多</span>"
-                                elif any(k in title_upper for k in bear_keywords):
-                                    tag = "<span style='color:#ef4444; font-weight:bold;'>🔴 潛在利空</span>"
-                                else:
-                                    tag = "<span style='color:#38bdf8; font-weight:bold;'>ℹ️ 市場動態</span>"
+                                if any(k in title_upper for k in bull_keywords): tag = "<span style='color:#10b981; font-weight:bold;'>🟢 潛在利多</span>"
+                                elif any(k in title_upper for k in bear_keywords): tag = "<span style='color:#ef4444; font-weight:bold;'>🔴 潛在利空</span>"
+                                else: tag = "<span style='color:#38bdf8; font-weight:bold;'>ℹ️ 市場動態</span>"
                                 
                                 st.markdown(f"""
                                 <div class='news-card'>
@@ -356,7 +374,6 @@ elif app_mode == "🔍 全球 K 線分析":
                                 </div>
                                 """, unsafe_allow_html=True)
                         else:
-                            # 備用方案：Google 財經新聞直接搜尋連結 (保證絕對有資料)
                             search_url = f"https://www.google.com/search?q={clean_title}+股票+新聞&tbm=nws"
                             st.warning(f"💡 雅虎財經 API 暫無回傳最新新聞。")
                             st.markdown(f"""
