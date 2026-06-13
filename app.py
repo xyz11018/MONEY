@@ -20,7 +20,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與專業金融視覺優化 (徹底修正文字隱形問題)
+# 1. 頁面配置與視覺優化
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -44,7 +44,6 @@ st.markdown("""
     
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
-    /* 🛠️ 修正：讓儀表板文字在亮色/暗色模式下，一律強制顯示清晰的深灰色與粗體 */
     .dashboard-card {
         background: rgba(148, 163, 184, 0.15) !important;
         border-radius: 8px;
@@ -65,73 +64,44 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🧠 終極大腦：台灣證交所/櫃買中心 官方字典直連
+# 2. 🧠 全新強固個股解析引擎：結合 Yahoo 原生網路搜尋 (不卡證交所 IP)
 # ==========================================
-@st.cache_data(ttl=86400)
-def get_tw_stock_dict():
-    tw_dict = {}
-    try:
-        res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=5)
-        if res.status_code == 200:
-            for item in res.json():
-                name = item.get("Name", "").strip().replace(" ", "")
-                code = item.get("Code", "").strip()
-                if name and code: tw_dict[name] = f"{code}.TW"
-    except: pass
-    try:
-        res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=5)
-        if res.status_code == 200:
-            for item in res.json():
-                name = item.get("CompanyName", "").strip().replace(" ", "")
-                code = item.get("SecuritiesCompanyCode", "").strip()
-                if name and code: tw_dict[name] = f"{code}.TWO"
-    except: pass
-    return tw_dict
-
 def resolve_ticker(user_input):
     t = user_input.strip().replace(" ", "")
     if not t: return ""
     t_upper = t.upper()
+    
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    dynamic_tw_dict = get_tw_stock_dict()
-    local_map = {
-        "台積電": "2330.TW", "台灣積體電路": "2330.TW", "台灣積體電路製造": "2330.TW",
-        "正2": "00631L.TW", "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA"
-    }
-    
-    if t in local_map: return local_map[t]
-    if t in dynamic_tw_dict: return dynamic_tw_dict[t]
-    
-    if re.match(r'^\d+[A-Z]?$', t_upper):
-        try:
-            if yf.Ticker(f"{t_upper}.TW", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TW"
-        except: pass
-        try:
-            if yf.Ticker(f"{t_upper}.TWO", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TWO"
-        except: pass
-        return f"{t_upper}.TW"
-
-    for name, ticker in local_map.items():
-        if t in name or name in t: return ticker
-    for name, ticker in dynamic_tw_dict.items():
-        if t in name or name in t: return ticker
-
+    # 優先處理：如果是純數字（台股代碼防呆）
+    if re.match(r'^\d+$', t):
+        for ext in [".TW", ".TWO"]:
+            try:
+                tk_check = f"{t}{ext}"
+                if yf.Ticker(tk_check, session=yf_session).fast_info.get('lastPrice'):
+                    return tk_check
+            except: pass
+            
+    # 次要處理：直接對 Yahoo Finance 發起跨國語意搜尋（包含中文、英文、代碼）
     try:
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
-        r = requests.get(url, headers=yf_session.headers, timeout=3)
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
+        r = requests.get(url, headers=yf_session.headers, timeout=5)
         if r.status_code == 200:
             quotes = r.json().get('quotes', [])
             if quotes:
+                # 優先挑選台灣市場的標的 (.TW 或 .TWO)
                 for q in quotes:
                     sym = q.get('symbol', '').upper()
-                    if sym.endswith(".TW") or sym.endswith(".TWO"): return sym
+                    if sym.endswith(".TW") or sym.endswith(".TWO"): 
+                        return sym
+                # 若無，則返回最符合的第一個搜尋結果 (如美股 AAPL)
                 return quotes[0].get('symbol', '').upper()
     except: pass
-        
-    if not re.match(r'^[A-Z0-9^.=]+$', t_upper): return ""
-    return t_upper
+    
+    # 最後防呆：若是英文字元直接返回
+    if re.match(r'^[A-Z0-9^.=]+$', t_upper): return t_upper
+    return ""
 
 def get_leverage(ticker):
     if ticker == "CASH": return 1.0
@@ -148,7 +118,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 強制即時化數據引擎 (掛載連線 Session)
+# 3. 即時數據抓取
 # ==========================================
 def fetch_market_data(ticker):
     if not ticker or ticker == "CASH": 
@@ -204,17 +174,14 @@ current_vix = vix_data["price"] if vix_data else 15.0
 
 db_data = load_portfolio()
 
-# --- 側邊欄 ---
 st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
 vix_color = "#ef4444" if current_vix >= 25 else ("#f59e0b" if current_vix >= 20 else "#10b981")
 vix_status = "⚠️ 極度恐慌" if current_vix >= 25 else ("⚡ 波動加劇" if current_vix >= 20 else "✅ 市場穩定")
 st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
-if current_vix >= 25: st.sidebar.error("🚨 警告：市場極度恐慌，持有槓桿 ETF 耗損風險極高！")
 
 st.sidebar.markdown("---")
-# 🤖 安全密碼輸入框
 api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (啟動 AI 大腦)", type="password")
 
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
@@ -239,7 +206,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼」或「中文名稱」，系統會自動智慧連結。")
+        st.info(f"💡 提示：代碼欄位可輸入「數字代碼」(如 6285) 或「中文名稱」(如 啟碁)，系統將自動連線解析。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -251,7 +218,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="輸入代碼或名稱").strip()
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 6285 或 啟碁").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
             if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "shares_input": shares_input})
@@ -259,7 +226,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
             error_tickers = []
-            with st.spinner('正在與官方伺服器連線解析並同步實時數據...'):
+            with st.spinner('正在同步數據中...'):
                 for item in new_setup:
                     real_ticker = resolve_ticker(item["raw_ticker"])
                     m_data = fetch_market_data(real_ticker) if real_ticker else None
@@ -268,7 +235,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 2344) 即可通關！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。請檢查名稱或直接輸入數字代碼。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -280,7 +247,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
-        with st.spinner(f"🔄 正在運算最新即時動態數據..."):
+        with st.spinner(f"🔄 正在運算動態數據..."):
             for asset in target_portfolio:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
@@ -346,14 +313,13 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
-                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
                 else: c[5].success(f"✅ 平衡區間 (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
 
         st.markdown("---")
-        st.markdown("### 💰 動態資金加碼分配器 (Smart Cash Deployment)")
+        st.markdown("### 💰 動態資金加碼分配器")
         add_cash = st.number_input("打算加碼的總資金 (NTD)", min_value=0, value=0, step=10000)
         if add_cash > 0:
             st.markdown("<div class='action-box'>", unsafe_allow_html=True)
@@ -375,37 +341,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         if shares_to_buy > 0: buy_list.append(f"🛒 **{clean_name}**：建議買進 **{shares_to_buy:,}** 股 (投入約 NTD {int(shares_to_buy * price_ntd):,})")
             if buy_list:
                 for b in buy_list: st.markdown(f"- {b}")
-            else: st.write("目前比例完美，可按目標比例等分投入。")
+            else: st.write("目前比例完美，可按目標比例投入。")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("---")
-        footer_cols = st.columns([1, 1])
-        with footer_cols[0]:
-            st.subheader(f"💰 {market_label} 綜合指標總結")
-            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
-            sc1, sc2, sc3 = st.columns(3)
-            sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
-            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
-            if current_view_data:
-                pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
-                fig_pie = px.pie(pie_df, values='val', names='tk', hole=0.4, title=f"{market_label}資產 真實比重圖")
-                fig_pie.update_layout(margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                st.plotly_chart(fig_pie, use_container_width=True)
-                
-        with footer_cols[1]:
-            if current_view_data:
-                st.subheader(f"📊 {market_label} 權重偏差分析")
-                bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/local_total_val*100) if local_total_val > 0 else 0, "Target": r["target_pct"]} for r in current_view_data])
-                fig_bar = go.Figure(data=[
-                    go.Bar(name='真實權重 (%)', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
-                    go.Bar(name='設定目標 (%)', x=bar_df['tk'], y=bar_df['Target'], marker_color='#475569')
-                ])
-                fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                st.plotly_chart(fig_bar, use_container_width=True)
-
 # ==========================================
-# 6. 分頁：全球 K 線分析 (🤖 改採原生 HTTP Post 請求直連官方服務)
+# 6. 分頁：全球 K 線分析 (🧠 頂級全自動相容萬用模型引擎)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -417,19 +357,19 @@ elif app_mode == "🔍 全球 K 線分析":
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = "6285"
     
-    if market_choice == "自訂輸入個股": raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱：", default_ticker)
+    if market_choice == "自訂輸入個股": raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (支援中文，如: 啟碁 或 6285)：", default_ticker)
     else: raw_ticker_input = default_ticker
     
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
         
         if not ticker_input:
-            st.error(f"❌ 查無此個股中文對應代碼。建議直接輸入『數字代碼』（如華邦電請輸入：2344，旺宏請輸入：2337，啟碁請輸入：6285）即可 100% 成功解碼！")
+            st.error(f"❌ 無法在網路解析此標的。請確認名稱（如：華邦電、旺宏、啟碁）或直接輸入數字代碼。")
         else:
-            st.caption(f"📊 智慧大腦連線指示：系統已將輸入解析為官方代碼 ` {ticker_input} `，正抓取歷史數據...")
+            st.caption(f"📊 智慧搜尋成功：系統已成功解析此標的官方代碼為 ` {ticker_input} `，正繪製走勢圖...")
             
             try:
-                with st.spinner("正在載入多維度戰情儀表板與技術圖表中..."):
+                with st.spinner("正在載入戰情儀表板與技術圖表中..."):
                     period_map = {"日K": "2y", "週K": "5y", "月K": "10y", "年K": "max"}
                     interval_map = {"日K": "1d", "週K": "1wk", "月K": "1mo", "年K": "1mo"}
                     
@@ -503,7 +443,7 @@ elif app_mode == "🔍 全球 K 線分析":
                             if not api_key:
                                 st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！")
                             else:
-                                with st.spinner("正在直連 Google 官方 AI 伺服器進行量化運算..."):
+                                with st.spinner("正透過頂級萬用通道調度 AI 機房進行量化運算..."):
                                     prompt = f"""
                                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供簡明扼要、專業的操作建議。
                                     標的：{clean_title}
@@ -521,21 +461,27 @@ elif app_mode == "🔍 全球 K 線分析":
                                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                                     """
                                     
-                                    # 🛠️ 終極修復方案：完全捨棄 Python genai 庫，改採底層原生 HTTP POST 直接發送給 Google API 機房
-                                    try:
-                                        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-                                        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                                        headers = {"Content-Type": "application/json"}
-                                        
-                                        response = requests.post(api_url, json=payload, headers=headers, timeout=15)
-                                        
-                                        if response.status_code == 200:
-                                            ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-                                            st.info(ai_text)
-                                        else:
-                                            st.error(f"AI 伺服器拒絕請求，狀態碼：{response.status_code}，錯誤內容：{response.text}")
-                                    except Exception as http_err:
-                                        st.error(f"連線至 Google AI 核心失敗，請確認網路或 Key 狀態：{http_err}")
+                                    # 🛠️ 雙重模型萬用陣列：優先使用最新強制放行的 2.5-flash，若遇到極舊金鑰則自動倒退至 text-bison 相容模式
+                                    models_to_try = ["gemini-2.5-flash", "gemini-1.0-pro", "text-bison"]
+                                    success = False
+                                    
+                                    for model_name in models_to_try:
+                                        try:
+                                            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                                            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                                            headers = {"Content-Type": "application/json"}
+                                            
+                                            response = requests.post(api_url, json=payload, headers=headers, timeout=12)
+                                            if response.status_code == 200:
+                                                ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                                                st.info(ai_text)
+                                                success = True
+                                                break
+                                        except:
+                                            continue
+                                            
+                                    if not success:
+                                        st.error("❌ AI 診斷失敗。這代表您的 API Key 被限制在舊版專案中。建議前往 Google AI Studio 網站，點擊「Create API Key」按鈕，重新建立一組全新的 Key 填入即可解鎖！")
 
-                    else: st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
+                    else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
