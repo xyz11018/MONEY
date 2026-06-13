@@ -58,27 +58,6 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 🤖 AI 自動化快取引擎 (防止額度超速)
-# ==========================================
-@st.cache_data(show_spinner=False, ttl=1800)
-def auto_ai_diagnosis(prompt_text, api_key_str):
-    if not api_key_str: return "⚠️ 系統尚未綁定 API Key，無法啟用 AI 診斷。"
-    genai.configure(api_key=api_key_str)
-    try:
-        model = genai.GenerativeModel("gemini-3.5-flash")
-        return "✨ **[Gemini 3.5 深度解析]**\n\n" + model.generate_content(prompt_text).text
-    except Exception as e:
-        err_str = str(e)
-        if "429" in err_str or "quota" in err_str.lower():
-            try:
-                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                return "✨ **[Gemini 2.5 穩定版 (3.5 額度滿載)]**\n\n" + fallback_model.generate_content(prompt_text).text
-            except Exception:
-                return "❌ AI 伺服器忙碌中 (額度皆耗盡)，系統將於稍後自動重試。"
-        else:
-            return f"❌ AI 解析發生錯誤: {err_str}"
-
-# ==========================================
 # 2. 🛡️ 史詩級三維度解析引擎
 # ==========================================
 STOCK_NAME_DICT = {
@@ -180,7 +159,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 即時數據抓取
+# 3. 📈 即時數據與量化指標抓取引擎 (含 KD & RSI)
 # ==========================================
 def fetch_market_data(ticker):
     if not ticker or ticker == "CASH": 
@@ -233,12 +212,25 @@ def fetch_market_data(ticker):
     return None
 
 def load_portfolio():
-    default_data = {"tw_portfolio": [], "us_portfolio": []}
+    default_data = {
+        "schemes": {
+            "🎯 台股主力配置": {"market": "TW", "assets": []},
+            "🎯 美股主力配置": {"market": "US", "assets": []}
+        }
+    }
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
-                if "tw_portfolio" in data or "us_portfolio" in data: return data
+                if "schemes" in data: return data
+                # 遷移舊資料
+                if "tw_portfolio" in data or "us_portfolio" in data:
+                    new_data = default_data.copy()
+                    if "tw_portfolio" in data and data["tw_portfolio"]:
+                        new_data["schemes"]["🎯 台股主力配置"] = {"market": "TW", "assets": data["tw_portfolio"]}
+                    if "us_portfolio" in data and data["us_portfolio"]:
+                        new_data["schemes"]["🎯 美股主力配置"] = {"market": "US", "assets": data["us_portfolio"]}
+                    return new_data
         except: pass
     return default_data
 
@@ -271,35 +263,37 @@ st.sidebar.markdown("---")
 api_key = MY_API_KEY
 if api_key: genai.configure(api_key=api_key)
 
+# 💡 回歸最直覺的市場切換模式
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
 
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
+    is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
+    market_label = "台股" if is_tw_mode else "美股"
+    current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
+    
     threshold = st.sidebar.slider("⚖️ 再平衡觸發門檻 (%)", 0.0, 10.0, 2.0, 0.5)
-    current_list_key = "tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio"
-    current_assets_len = len(db_data.get(current_list_key, []))
+    current_assets_len = len(db_data["schemes"][current_scheme_name]["assets"])
     num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, current_assets_len), min_value=1)
 
 # ==========================================
 # 5. 主功能：動態持股監控
 # ==========================================
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
-    is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
-    market_label = "台股" if is_tw_mode else "美股"
     
     st.markdown(f'<h1>💼 {market_label} 專業量化配置</h1>', unsafe_allow_html=True)
     
-    with st.expander(f"⚙️ 點此編輯庫存與戰略權重", expanded=(not db_data[current_list_key])):
+    with st.expander(f"⚙️ 點此編輯庫存與戰略權重", expanded=(not db_data["schemes"][current_scheme_name]["assets"])):
         st.info(f"💡 提示：請輸入您的持股數量，並手動設定理想的【目標權重%】（例如 40, 40, 20），系統會自動計算買賣缺口。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**")
         cols[1].markdown("**持有股數 (現金請輸入金額)**")
-        cols[2].markdown("**目標權重 (%)**")
+        cols[2].markdown("**戰略目標權重 (%)**")
         
         new_setup = []
         for i in range(int(num_assets)):
             r_cols = st.columns([2, 2, 2])
-            hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "init_shares": 0, "target_pct": 0}
+            hist = db_data["schemes"][current_scheme_name]["assets"][i] if i < len(db_data["schemes"][current_scheme_name]["assets"]) else {"ticker": "", "init_shares": 0, "target_pct": 0}
             display_tk = hist["ticker"].split('.')[0] if hist.get("ticker") else ""
             safe_shares = int(max(0, float(hist.get("init_shares", 0))))
             safe_pct = float(hist.get("target_pct", 0.0))
@@ -330,7 +324,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             
             if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。")
             else:
-                db_data[current_list_key] = locked_assets
+                db_data["schemes"][current_scheme_name]["assets"] = locked_assets
                 save_portfolio(db_data)
                 st.success(f"🔒 更新成功！系統已套用您的專屬比例。")
                 st.rerun()
@@ -338,7 +332,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     current_view_data = []
     local_total_val, local_total_exp = 0, 0
     local_total_dividend = 0
-    target_portfolio = db_data[current_list_key]
+    target_portfolio = db_data["schemes"][current_scheme_name]["assets"]
     
     if target_portfolio:
         with st.spinner(f"🔄 正在同步報價與量化指標..."):
@@ -377,7 +371,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             kpi3.metric(f"整體平均殖利率", f"{avg_div_rate:.2f}%")
             
             st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{current_scheme_name} 動態監控盤</div>', unsafe_allow_html=True)
             
             for item in current_view_data:
                 c = st.columns([1.6, 1.4, 1.4, 1.4, 1.4, 2.8])
@@ -488,41 +482,69 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ==========================================
-        # 🤖 AI 自動化診斷報告掛載區 (投資組合)
+        # 🤖 手動觸發：AI 投資組合戰略兵推 (取代自動背景運算)
         # ==========================================
         st.markdown("---")
-        st.subheader("🤖 AI 投資組合戰略總體檢 (全自動解析)")
-        if not api_key:
-            st.warning("⚠️ 尚未綁定 Gemini API Key，請先設定以解鎖 AI 總體檢功能！")
-        else:
-            with st.spinner("🧠 AI 正在自動解析資產結構..."):
-                portfolio_summary = f"總市值: NTD {int(local_total_val):,}\n"
-                for item in current_view_data:
-                    tk_name = item['ticker'].split('.')[0]
-                    real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
-                    portfolio_summary += f"- {tk_name}：目前佔比 {real_pct:.1f}% (設定目標 {item['target_pct']}%)，屬性 {item.get('leverage',1.0)}倍槓桿，日K值 {item['kd_k']:.1f}，RSI {item['rsi']:.1f}，距高點回撤 {item['drawdown']:.1f}%\n"
+        st.subheader("🤖 投資組合戰略兵推 (AI 深度解析)")
+        st.info("💡 點擊下方按鈕，AI 將綜合您的【權重偏離度】與【各標的技術面 (均線/KD/RSI)】，為您擬定精確的進出單策略。")
+        
+        if st.button(f"✨ 啟動 Gemini 量化操盤手，分析【{current_scheme_name}】", key="manual_portfolio_ai_btn", type="primary", use_container_width=True):
+            if not api_key:
+                st.warning("⚠️ 請先確保您的 Gemini API Key 已在 Secrets 中設定成功！")
+            else:
+                with st.spinner("🧠 AI 正在進行多維度數據運算與戰略推演..."):
+                    portfolio_summary = f"【總資產市值】: NTD {int(local_total_val):,}\n\n"
+                    for item in current_view_data:
+                        tk_name = item['ticker'].split('.')[0]
+                        real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
+                        diff_pct = real_pct - item['target_pct']
+                        portfolio_summary += (
+                            f"🔹 標的：{tk_name} ({item.get('leverage',1.0)}倍槓桿)\n"
+                            f"   - 權重狀態：目標 {item['target_pct']}% / 實際 {real_pct:.1f}% (偏離 {diff_pct:+.1f}%)\n"
+                            f"   - 技術指標：日K值 {item['kd_k']:.1f} / 14期RSI {item['rsi']:.1f} / 乖離率 {item['bias']:+.1f}%\n"
+                            f"   - 趨勢與風險：當前價格 {'大於' if item['now_p'] >= item['ma200'] else '小於'} 200日均線 / 距高點回撤 {item['drawdown']:.1f}%\n\n"
+                        )
+                        
+                    prompt = f"""
+                    你是一位頂級的法人機構量化交易員。請根據以下最新的【投資組合與技術面數據】，為我提供精確的進出建議。
                     
-                prompt = f"""
-                你現在是一位頂級的量化交易員。請為我診斷以下的【{market_label}投資組合】狀態。
-                
-                【投資組合概況】
-                {portfolio_summary}
-                
-                請嚴格遵循以下三大槓桿與原型 ETF 操作原則來給出建議：
-                1. 均線與槓桿策略 (策略A)：若市場環境轉空，2倍以上槓桿ETF必須強烈建議減碼或避險，防範「波動內耗」。
-                2. 指標抄底 (策略B)：若標的的 KD < 20 或 RSI < 30，視為超賣區，是分批加碼絕佳時機；若 KD > 80，則提醒高檔鈍化風險。
-                3. 動態再平衡 (策略C)：依照目標權重%，若偏離過大，必須明確指出「該賣出誰、買進誰」以維持紀律。
-                
-                請以專業的繁體中文條列式給出：
-                1. 資金配置健檢 (現金水位是否安全？風險是否集中？)
-                2. 針對個別標的之具體戰術行動 (基於 KD/RSI 指標)
-                3. 本期再平衡執行指令
-                """
-                ai_report = auto_ai_diagnosis(prompt, api_key)
-                st.info(ai_report)
+                    {portfolio_summary}
+                    
+                    請嚴格遵循以下核心邏輯：
+                    1. 槓桿保護優先：對於 2 倍以上槓桿標的，若跌破 200 日均線，必須強烈建議減碼或停損以防範波動內耗。
+                    2. 順勢與逆勢結合：若 KD < 20 或 RSI < 30 (超賣)，建議分批買進；若 KD > 80 (超買) 或乖離率過高，建議分批獲利了結。
+                    3. 再平衡紀律：針對權重偏離目標超過 2% 的標的，明確指示應該「賣出超重部位」並「買進低配部位」。
+                    
+                    請以專業、果斷的繁體中文給出：
+                    1. 📊 總體資產健檢 (一句話總結目前的部位風險與資金配置狀態)
+                    2. 🎯 個股精確戰術 (針對每一檔標的，綜合技術面與權重偏離，明確給出「強烈買進/分批買進/續抱/分批賣出/嚴格停損」的具體建議與理由)
+                    3. 💡 本週操盤重點 (給操盤手的一段話)
+                    """
+                    try:
+                        model = genai.GenerativeModel("gemini-3.5-flash")
+                        response = model.generate_content(prompt)
+                        st.success("✅ AI 戰略兵推完成！")
+                        st.info(response.text)
+                    except Exception as ai_err:
+                        err_str = str(ai_err)
+                        if "429" in err_str or "quota" in err_str.lower():
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是戰略兵推結果：")
+                                st.info(fallback_response.text)
+                            except: st.error("❌ 連線失敗，請稍候再試。")
+                        else:
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                st.info(fallback_response.text)
+                            except Exception as fallback_err:
+                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (AI 自動化解析)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -639,38 +661,55 @@ elif app_mode == "🔍 全球 K 線分析":
                             fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-                            # ==========================================
-                            # 🤖 AI 自動化診斷報告掛載區 (個股技術面)
-                            # ==========================================
                             st.markdown("---")
-                            st.subheader("🤖 AI 專屬個股診斷 (技術面自動解析)")
-                            if not api_key:
-                                st.warning("⚠️ 尚未綁定 Gemini API Key，請先設定以解鎖 AI 診斷功能！")
-                            else:
-                                d = st.session_state.ai_data
-                                with st.spinner("🧠 AI 正在自動判讀技術面..."):
-                                    prompt = f"""
-                                    你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
-                                    標的：{d['title']} {d['zh_name']}
-                                    K線週期：{d['k_period']}
-                                    最新收盤價：{d['close']:.2f}
-                                    關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
-                                    14期 RSI：{d['rsi']:.1f} ({d['rsi_status']})
-                                    本益比：{d['pe']}
-                                    殖利率：{d['yield']}
-                                    所屬板塊：{d['sector']}
-                                    
-                                    請嚴格遵循以下操作原則給出建議：
-                                    1. 均線策略：若價格跌破長天期均線，對於槓桿型 ETF 必須強烈提示「防範波動內耗，嚴格停損或減碼」。
-                                    2. 指標抄底：若 RSI < 30 代表超賣恐慌，視為買點；RSI > 70 留意回檔風險。
-                                    
-                                    請以繁體中文給出：
-                                    1. 盤勢總結 (多頭/空頭/盤整)
-                                    2. 多空風險評估 (結合 RSI 與均線判斷)
-                                    3. 具體操作建議
-                                    """
-                                    ai_report = auto_ai_diagnosis(prompt, api_key)
-                                    st.info(ai_report)
+                            st.subheader("🤖 AI 專屬個股診斷 (技術面)")
+                            if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary", use_container_width=True):
+                                if not api_key:
+                                    st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
+                                else:
+                                    d = st.session_state.ai_data
+                                    with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
+                                        prompt = f"""
+                                        你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
+                                        標的：{d['title']} {d['zh_name']}
+                                        K線週期：{d['k_period']}
+                                        最新收盤價：{d['close']:.2f}
+                                        關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
+                                        14期 RSI：{d['rsi']:.1f} ({d['rsi_status']})
+                                        本益比：{d['pe']}
+                                        殖利率：{d['yield']}
+                                        所屬板塊：{d['sector']}
+                                        
+                                        請嚴格遵循以下操作原則給出建議：
+                                        1. 均線策略：若價格跌破長天期均線，對於槓桿型 ETF 必須強烈提示「防範波動內耗，嚴格停損或減碼」。
+                                        2. 指標抄底：若 RSI < 30 代表超賣恐慌，視為買點；RSI > 70 留意回檔風險。
+                                        
+                                        請以繁體中文給出：
+                                        1. 盤勢總結 (多頭/空頭/盤整)
+                                        2. 多空風險評估 (結合 RSI 與均線判斷)
+                                        3. 具體操作建議
+                                        """
+                                        try:
+                                            model = genai.GenerativeModel("gemini-3.5-flash")
+                                            response = model.generate_content(prompt)
+                                            st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
+                                            st.info(response.text)
+                                        except Exception as ai_err:
+                                            err_str = str(ai_err)
+                                            if "429" in err_str or "quota" in err_str.lower():
+                                                try:
+                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                                    fallback_response = fallback_model.generate_content(prompt)
+                                                    st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
+                                                    st.info(fallback_response.text)
+                                                except: st.error("❌ 連線失敗，請等待 1 分鐘後再試。")
+                                            else:
+                                                try:
+                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                                    fallback_response = fallback_model.generate_content(prompt)
+                                                    st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                                    st.info(fallback_response.text)
+                                                except Exception: st.error("❌ 連線失敗，請檢查網路或 API 權限。")
 
                         with tab2:
                             st.markdown(f"### 📰 {clean_title} {zh_name} 近期焦點新聞")
@@ -688,28 +727,31 @@ elif app_mode == "🔍 全球 K 線分析":
                                     st.markdown(f"**{i+1}. [{title}]({link})** _(來源: {publisher})_")
                                     news_text_for_ai += f"標題: {title}\n來源: {publisher}\n\n"
                                 
-                                # ==========================================
-                                # 🤖 AI 自動化診斷報告掛載區 (新聞基本面)
-                                # ==========================================
                                 st.markdown("---")
-                                st.subheader("🤖 AI 近期多空情緒總結 (基本面自動解析)")
-                                if not api_key:
-                                    st.warning("⚠️ 尚未綁定 Gemini API Key，請先設定以解鎖 AI 診斷功能！")
-                                else:
-                                    with st.spinner("🧠 AI 正在自動閱讀新聞並剖析市場情緒..."):
-                                        news_prompt = f"""
-                                        你現在是一位專業的法人機構操盤手。請根據以下關於「{clean_title} {zh_name}」的最新 5 篇新聞標題與來源，進行市場情緒判讀。
-                                        
-                                        【近期新聞】
-                                        {news_text_for_ai}
-                                        
-                                        請以專業、精煉的繁體中文給出：
-                                        1. 市場情緒總結 (目前是極度樂觀、偏多、中性、偏空還是恐慌？)
-                                        2. 近期事件核心焦點 (條列出 2-3 個導致目前情緒的關鍵字或事件)
-                                        3. 潛在風險或催化劑 (這些新聞暗示了哪些我們需要注意的未來動向？)
-                                        """
-                                        news_report = auto_ai_diagnosis(news_prompt, api_key)
-                                        st.info(news_report)
+                                if st.button("✨ 讓 Gemini 總結近期多空情緒 (基本面)", key="news_ai_btn", type="primary", use_container_width=True):
+                                    if not api_key:
+                                        st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
+                                    else:
+                                        with st.spinner("🧠 正在讓 AI 閱讀上述新聞並剖析市場情緒..."):
+                                            news_prompt = f"""
+                                            你現在是一位專業的法人機構操盤手。請根據以下關於「{clean_title} {zh_name}」的最新 5 篇新聞標題與來源，進行市場情緒判讀。
+                                            
+                                            【近期新聞】
+                                            {news_text_for_ai}
+                                            
+                                            請以專業、精煉的繁體中文給出：
+                                            1. 市場情緒總結 (目前是極度樂觀、偏多、中性、偏空還是恐慌？)
+                                            2. 近期事件核心焦點 (條列出 2-3 個導致目前情緒的關鍵字或事件)
+                                            3. 潛在風險或催化劑 (這些新聞暗示了哪些我們需要注意的未來動向？)
+                                            """
+                                            try:
+                                                model = genai.GenerativeModel("gemini-2.5-flash")
+                                                response = model.generate_content(news_prompt)
+                                                st.success("✅ AI 新聞情緒解析完畢！")
+                                                st.info(response.text)
+                                            except Exception as e:
+                                                st.error("❌ AI 讀取新聞失敗，請確認 API 連線狀態。")
+                                                st.code(str(e))
                             else:
                                 st.info("目前抓取不到該標的的近期相關新聞。")
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
