@@ -66,11 +66,12 @@ DB_FILE = "portfolio_db.json"
 # ==========================================
 # 2. 終極強固解析引擎 (內建本地核心字典)
 # ==========================================
-# 股名對照表 (用於畫面顯示)
 STOCK_NAME_DICT = {
     "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
     "2317": "鴻海", "2603": "長榮", "0050": "元大台灣50", "00631L": "元大台灣50正2",
     "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
+    "2303": "聯電", "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2609": "陽明",
+    "3231": "緯創", "2308": "台達電", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息",
     "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
     "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
     "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
@@ -88,7 +89,6 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 反向搜尋字典
     reverse_map = {v: k+".TW" for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
     if t in reverse_map: return reverse_map[t]
     if t in ["華邦"]: return "2344.TW"
@@ -216,7 +216,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
-    # 💡 提示更新：讓使用者明確知道這裡可以隨時調整股數與權重
     with st.expander(f"⚙️ 點此調整：持有股數與目標權重 ({market_label})", expanded=(not db_data[current_list_key])):
         st.info(f"💡 提示：在此修改您的持有股數與目標%，修改完畢後點擊下方按鈕即可更新系統。")
         cols = st.columns([2, 2, 2])
@@ -230,7 +229,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 6285 或 啟碁").strip()
+            # 💡 已移除 placeholder 字樣
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
             if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "shares_input": shares_input})
@@ -247,7 +247,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 6285) 即可通關！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』即可通關！")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -285,7 +285,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
-                # 取得中文股名
                 zh_name = get_stock_name(item["ticker"])
                 
                 if item["ticker"] == "CASH":
@@ -313,7 +312,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
                         else: action_text = "無需調整"
                         
-                    # 💡 UI 更新：在代碼下方直接顯示中文名稱
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>槓桿屬性:</div><div class='data-value'>{item.get('leverage', 1.0)}x</div>", unsafe_allow_html=True)
@@ -329,6 +327,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
+                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -365,14 +364,13 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             
-            # 💡 UI 更新：依您的要求取消總曝險與實際槓桿，僅保留總投資市值
+            # 💡 依要求：僅保留單純的投資市值
             st.metric(f"總投資市值 (NTD)", f"{int(local_total_val):,}")
             
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
                 fig_pie = px.pie(pie_df, values='val', names='tk', hole=0.4, title=f"{market_label}資產 真實比重圖")
                 fig_pie.update_layout(margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                # 強制關閉工具列
                 st.plotly_chart(fig_pie, use_container_width=True, config={'displayModeBar': False})
                 
         with footer_cols[1]:
@@ -384,11 +382,10 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     go.Bar(name='設定目標 (%)', x=bar_df['tk'], y=bar_df['Target'], marker_color='#475569')
                 ])
                 fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                # 強制關閉工具列
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (🧠 已修復閃退重置問題)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -400,22 +397,30 @@ elif app_mode == "🔍 全球 K 線分析":
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = "6285"
     
+    # 💡 記憶體狀態鎖定：讓 K 線圖在點擊 AI 診斷後不會被 Streamlit 刷掉
+    if "active_kline_ticker" not in st.session_state:
+        st.session_state.active_kline_ticker = default_ticker
+    
     if market_choice == "自訂輸入個股": 
-        raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解，如: 啟碁、華邦電、緯穎 或 6285)：", default_ticker)
-        click_parse = st.button("🔍 點擊開始解析個股數據", type="primary")
+        # 已移除 placeholder 字樣
+        raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解，如: 啟碁、中信金 或 6285)：", value=st.session_state.active_kline_ticker)
+        if st.button("🔍 點擊開始解析個股數據", type="primary"):
+            st.session_state.active_kline_ticker = raw_ticker_input
     else: 
-        raw_ticker_input = default_ticker
-        click_parse = True
+        st.session_state.active_kline_ticker = default_ticker
     
     if "ai_data" not in st.session_state:
         st.session_state.ai_data = None
     
-    if raw_ticker_input and click_parse:
-        ticker_input = resolve_ticker(raw_ticker_input)
+    target_to_parse = st.session_state.active_kline_ticker
+    
+    if target_to_parse:
+        ticker_input = resolve_ticker(target_to_parse)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。請確認名稱或直接輸入四位數代碼。")
+            st.error(f"❌ 查無此標的。請確認名稱或直接輸入數字代碼。")
         else:
+            zh_name = get_stock_name(ticker_input)
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
             
             try:
@@ -471,7 +476,7 @@ elif app_mode == "🔍 全球 K 線分析":
                         st.markdown("<br>", unsafe_allow_html=True)
                         
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
-                        st.subheader(f"📈 {clean_title} 技術走勢")
+                        st.subheader(f"📈 {clean_title} {zh_name} 技術走勢")
                         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
                         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
                         fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
@@ -487,13 +492,11 @@ elif app_mode == "🔍 全球 K 線分析":
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
                         
-                        # config 搭配 CSS 雙重封殺模式列
                         fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                        # 強制關閉工具列
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                         st.session_state.ai_data = {
-                            "title": clean_title, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
+                            "title": clean_title, "zh_name": zh_name, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
                             "n3": n3, "ma3": float(df['MA3'].iloc[-1]), "rsi": rsi_val, "rsi_status": rsi_status,
                             "pe": pe_str, "yield": yield_str, "sector": sector_str
                         }
@@ -514,7 +517,7 @@ elif app_mode == "🔍 全球 K 線分析":
                 with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
                     prompt = f"""
                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
-                    標的：{d['title']}
+                    標的：{d['title']} {d['zh_name']}
                     K線週期：{d['k_period']}
                     最新收盤價：{d['close']:.2f}
                     關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
@@ -530,7 +533,6 @@ elif app_mode == "🔍 全球 K 線分析":
                     """
                     
                     try:
-                        # 💡 升級：首選使用最新 3.5 模型
                         model = genai.GenerativeModel("gemini-3.5-flash")
                         response = model.generate_content(prompt)
                         st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
