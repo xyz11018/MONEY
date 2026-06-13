@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與專業金融視覺優化
+# 1. 頁面配置與專業金融視覺優化 (修正淺色/深色文字隱形問題)
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -43,7 +43,26 @@ st.markdown("""
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
-    .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
+    /* 🛠️ 修正：讓戰情儀表板卡片在淺色模式下也能清晰看見文字，文字顏色設定為通用深灰 */
+    .action-box { 
+        background: rgba(16, 185, 129, 0.08); 
+        border-left: 4px solid #10b981; 
+        padding: 12px; 
+        border-radius: 8px; 
+        margin-top: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .dashboard-card {
+        background: rgba(148, 163, 184, 0.12);
+        border-radius: 8px;
+        padding: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        color: #334155 !important; /* 👈 使用深灰色，確保淺色/深色模式皆可見 */
+    }
+    /* 如果使用者系統是深色模式，則微調卡片內文字為亮色 */
+    @media (prefers-color-scheme: dark) {
+        .dashboard-card { color: #f8fafc !important; }
+    }
     
     label, .stMarkdown p { font-weight: 500; }
     hr { border-color: rgba(148, 163, 184, 0.2); }
@@ -119,7 +138,7 @@ def resolve_ticker(user_input):
     for name, ticker in dynamic_tw_dict.items():
         if t in name or name in t: return ticker
 
-    # 最終備援：若字典皆無，才去撞 Yahoo API
+    # 第四關：若還是中文且字典查不到，嘗試去撞 Yahoo API
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=3)
@@ -131,6 +150,10 @@ def resolve_ticker(user_input):
                     if sym.endswith(".TW") or sym.endswith(".TWO"): return sym
                 return quotes[0].get('symbol', '').upper()
     except: pass
+        
+    # 🛠️ 修正：如果最終還是非英數字代碼的純中文（查無此股），回傳空字串，防止丟給 yfinance 報錯
+    if not re.match(r'^[A-Z0-9^.=]+$', t_upper):
+        return ""
         
     return t_upper
 
@@ -152,8 +175,7 @@ def get_leverage(ticker):
 # 3. 強制即時化數據引擎 (掛載連線 Session)
 # ==========================================
 def fetch_market_data(ticker):
-    if ticker == "CASH": 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
+    if not ticker or ticker == "CASH": 
         return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
     try:
         t_obj = yf.Ticker(ticker, session=yf_session)
@@ -268,13 +290,13 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             with st.spinner('正在與官方伺服器連線解析並同步實時數據...'):
                 for item in new_setup:
                     real_ticker = resolve_ticker(item["raw_ticker"])
-                    m_data = fetch_market_data(real_ticker)
-                    lev = get_leverage(real_ticker)
+                    m_data = fetch_market_data(real_ticker) if real_ticker else None
+                    lev = get_leverage(real_ticker) if real_ticker else 1.0
                     if m_data and m_data["price"] > 0: 
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別或抓取以下標的：{', '.join(error_tickers)}")
+            if error_tickers: st.error(f"⚠️ 無法識別或抓取以下標的：{', '.join(error_tickers)}。如果是台股，建議改用「數字代碼」(如: 2344) 直接輸入！")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -428,107 +450,121 @@ elif app_mode == "🔍 全球 K 線分析":
     
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
-        st.caption(f"📊 智慧大腦連線指示：系統已將輸入解析為官方代碼 ` {ticker_input} `，正抓取歷史數據...")
         
-        try:
-            with st.spinner("正在載入多維度戰情儀表板與技術圖表中..."):
-                period_map = {"日K": "2y", "週K": "5y", "月K": "10y", "年K": "max"}
-                interval_map = {"日K": "1d", "週K": "1wk", "月K": "1mo", "年K": "1mo"}
-                
-                df = yf.download(ticker_input, period=period_map[k_period], interval=interval_map[k_period], progress=False, session=yf_session)
-                if not df.empty:
-                    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-                    if k_period == "年K":
-                        try: df = df.resample('YE').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
-                        except: df = df.resample('Y').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
+        # 🛠️ 修正：檢查如果字串解析回傳空（代表中文查無字典且非標準代碼），直接攔截防呆
+        if not ticker_input:
+            st.error(f"❌ 無法成功將「{raw_ticker_input}」轉換為交易所代碼。部分個股因官方API在非交易日未回傳，建議直接輸入『數字代碼』（例如：華邦電請輸入 2344，旺宏請輸入 2337）即可秒殺通關！")
+        else:
+            st.caption(f"📊 智慧大腦連線指示：系統已將輸入解析為官方代碼 ` {ticker_input} `，正抓取歷史數據...")
+            
+            try:
+                with st.spinner("正在載入多維度戰情儀表板與技術圖表中..."):
+                    period_map = {"日K": "2y", "週K": "5y", "月K": "10y", "年K": "max"}
+                    interval_map = {"日K": "1d", "週K": "1wk", "月K": "1mo", "年K": "1mo"}
                     
-                    delta = df['Close'].diff()
-                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                    rs = gain / loss
-                    df['RSI'] = 100 - (100 / (1 + rs))
-                    
-                    if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5 (週線)", "MA20 (月線)", "MA200 (年線)"
-                    elif k_period == "週K": ma1, ma2, ma3, n1, n2, n3 = 4, 13, 52, "MA4 (月線)", "MA13 (季線)", "MA52 (年線)"
-                    elif k_period == "月K": ma1, ma2, ma3, n1, n2, n3 = 6, 12, 60, "MA6 (半年線)", "MA12 (年線)", "MA60 (五年線)"
-                    else: ma1, ma2, ma3, n1, n2, n3 = 3, 5, 10, "MA3 (三年線)", "MA5 (五年線)", "MA10 (十年線)"
+                    df = yf.download(ticker_input, period=period_map[k_period], interval=interval_map[k_period], progress=False, session=yf_session)
+                    if not df.empty:
+                        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+                        if k_period == "年K":
+                            try: df = df.resample('YE').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
+                            except: df = df.resample('Y').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
                         
-                    df['MA1'] = df['Close'].rolling(ma1).mean()
-                    df['MA2'] = df['Close'].rolling(ma2).mean()
-                    df['MA3'] = df['Close'].rolling(ma3).mean()
-                    
-                    try:
-                        info = yf.Ticker(ticker_input, session=yf_session).info
-                        pe = info.get('trailingPE', 0)
-                        yield_pct = info.get('dividendYield', 0)
-                        sector = info.get('sector', '未提供')
-                        industry = info.get('industry', '')
-                        sector_str = f"{sector} - {industry}" if industry else sector
-                    except: pe, yield_pct, sector_str = 0, 0, "未提供"
+                        delta = df['Close'].diff()
+                        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                        rs = gain / loss
+                        df['RSI'] = 100 - (100 / (1 + rs))
                         
-                    rsi_val = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 0
-                    
-                    st.markdown("### 📊 多維度戰情儀表板")
-                    cc1, cc2, cc3 = st.columns(3)
-                    pe_str = f"{pe:.1f} 倍" if pe and pe > 0 else "無/虧損"
-                    yield_str = f"{yield_pct*100:.2f} %" if yield_pct and yield_pct > 0 else "無配息"
-                    rsi_str = f"{rsi_val:.1f}"
-                    rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
-                    
-                    cc1.markdown(f"<div class='action-box'><b>🏢 產業與板塊</b><br><span style='font-size:1.1rem; color:#f8fafc;'>{sector_str}</span></div>", unsafe_allow_html=True)
-                    cc2.markdown(f"<div class='action-box'><b>📈 核心基本面</b><br><span style='font-size:1.1rem; color:#00ffcc;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
-                    cc3.markdown(f"<div class='action-box'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem; color:#f97316;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    
-                    clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
-                    st.subheader(f"📈 {clean_title} 技術走勢")
-                    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-                    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
-                    fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
-                    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
-                    
-                    if k_period == "日K": range_start = df.index.max() - pd.Timedelta(days=180)
-                    elif k_period == "週K": range_start = df.index.max() - pd.Timedelta(days=365*2)
-                    elif k_period == "月K": range_start = df.index.max() - pd.Timedelta(days=365*5)
-                    else: range_start = df.index.min()
-                    
-                    fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
-                    fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
-                    fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=60, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", modebar=dict(bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc'))
-                    st.plotly_chart(fig, use_container_width=True)
+                        if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5 (週線)", "MA20 (月線)", "MA200 (年線)"
+                        elif k_period == "週K": ma1, ma2, ma3, n1, n2, n3 = 4, 13, 52, "MA4 (月線)", "MA13 (季線)", "MA52 (年線)"
+                        elif k_period == "月K": ma1, ma2, ma3, n1, n2, n3 = 6, 12, 60, "MA6 (半年線)", "MA12 (年線)", "MA60 (五年線)"
+                        else: ma1, ma2, ma3, n1, n2, n3 = 3, 5, 10, "MA3 (三年線)", "MA5 (五年線)", "MA10 (十年線)"
+                            
+                        df['MA1'] = df['Close'].rolling(ma1).mean()
+                        df['MA2'] = df['Close'].rolling(ma2).mean()
+                        df['MA3'] = df['Close'].rolling(ma3).mean()
+                        
+                        try:
+                            info = yf.Ticker(ticker_input, session=yf_session).info
+                            pe = info.get('trailingPE', 0)
+                            yield_pct = info.get('dividendYield', 0)
+                            sector = info.get('sector', '未提供')
+                            industry = info.get('industry', '')
+                            sector_str = f"{sector} - {industry}" if industry else sector
+                        except: pe, yield_pct, sector_str = 0, 0, "未提供"
+                            
+                        rsi_val = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 0
+                        
+                        st.markdown("### 📊 多維度戰情儀表板")
+                        cc1, cc2, cc3 = st.columns(3)
+                        pe_str = f"{pe:.1f} 倍" if pe and pe > 0 else "無/虧損"
+                        yield_str = f"{yield_pct*100:.2f} %" if yield_pct and yield_pct > 0 else "無配息"
+                        rsi_str = f"{rsi_val:.1f}"
+                        rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
+                        
+                        # 🛠️ 修正：將樣式類別套用為 dashboard-card，確保淺色與深色模式文字自動變更適應色
+                        cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span style='font-size:1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
+                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span style='font-size:1.1rem; font-weight:bold;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem; font-weight:bold;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        
+                        clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
+                        st.subheader(f"📈 {clean_title} 技術走勢")
+                        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
+                        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
+                        
+                        if k_period == "日K": range_start = df.index.max() - pd.Timedelta(days=180)
+                        elif k_period == "週K": range_start = df.index.max() - pd.Timedelta(days=365*2)
+                        elif k_period == "月K": range_start = df.index.max() - pd.Timedelta(days=365*5)
+                        else: range_start = df.index.min()
+                        
+                        fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
+                        fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
+                        
+                        # 🛠️ 修正：將工具列 (modebar) 直接移到最頂端（或可隱藏），完美解決文字疊字、按鈕遮擋的問題
+                        fig.update_layout(
+                            xaxis_rangeslider_visible=False, 
+                            height=650, 
+                            margin=dict(t=60, b=10, l=10, r=10), 
+                            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", 
+                            modebar=dict(orientation='v', bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc')
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
 
-                    st.markdown("---")
-                    st.subheader("🤖 AI 專屬個股診斷")
-                    if st.button("✨ 讓 Gemini 分析目前盤勢"):
-                        if not api_key:
-                            st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！才能喚醒 AI 喔！")
-                        else:
-                            with st.spinner("Gemini 正在匯整量化數據與技術指標，深度運算中..."):
-                                prompt = f"""
-                                你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供簡明扼要、專業的操作建議。
-                                標的：{clean_title}
-                                K線週期：{k_period}
-                                最新收盤價：{df['Close'].iloc[-1]:.2f}
-                                關鍵長天期均線 ({n3})：{df['MA3'].iloc[-1]:.2f} ({'跌破' if df['Close'].iloc[-1] < df['MA3'].iloc[-1] else '站上'}均線)
-                                14期 RSI：{rsi_val:.1f} ({rsi_status})
-                                本益比：{pe_str}
-                                殖利率：{yield_str}
-                                所屬板塊：{sector_str}
-                                
-                                請以繁體中文給出：
-                                1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
-                                2. 多空風險評估 (結合 RSI 與均線判斷)
-                                3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
-                                """
-                                try:
-                                    # 🛠️ 核心修正：更換為最新的標準穩定模型代碼
-                                    model = genai.GenerativeModel("gemini-1.5-flash-latest")
-                                    response = model.generate_content(prompt)
-                                    st.info(response.text)
-                                except Exception as e:
-                                    st.error(f"AI 分析失敗，請檢查 API Key 是否正確或網路狀態。錯誤代碼：{e}")
+                        st.markdown("---")
+                        st.subheader("🤖 AI 專屬個股診斷")
+                        if st.button("✨ 讓 Gemini 分析目前盤勢"):
+                            if not api_key:
+                                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！才能喚醒 AI 喔！")
+                            else:
+                                with st.spinner("Gemini 正在匯整量化數據與技術指標，深度運算中..."):
+                                    prompt = f"""
+                                    你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供簡明扼要、專業的操作建議。
+                                    標的：{clean_title}
+                                    K線週期：{k_period}
+                                    最新收盤價：{df['Close'].iloc[-1]:.2f}
+                                    關鍵長天期均線 ({n3})：{df['MA3'].iloc[-1]:.2f} ({'跌破' if df['Close'].iloc[-1] < df['MA3'].iloc[-1] else '站上'}均線)
+                                    14期 RSI：{rsi_val:.1f} ({rsi_status})
+                                    本益比：{pe_str}
+                                    殖利率：{yield_str}
+                                    所屬板塊：{sector_str}
+                                    
+                                    請以繁體中文給出：
+                                    1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
+                                    2. 多空風險評估 (結合 RSI 與均線判斷)
+                                    3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
+                                    """
+                                    try:
+                                        # 🛠️ 核心修正：更換為最標準且向下相容的型號代碼 "gemini-1.5-flash"
+                                        model = genai.GenerativeModel("gemini-1.5-flash")
+                                        response = model.generate_content(prompt)
+                                        st.info(response.text)
+                                    except Exception as e:
+                                        st.error(f"AI 分析失敗，請檢查 API Key 是否正確或網路狀態。錯誤代碼：{e}")
 
-                else: st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
-        except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
+                    else: st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
+            except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
