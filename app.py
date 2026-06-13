@@ -99,17 +99,15 @@ def smart_resolve_ticker(user_input, api_key=""):
     name_result = t
     is_digit = bool(re.match(r'^\d+$', t))
     
-    # 內建極速防呆字典
     reverse_map = {v: k for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
     if t in reverse_map:
         tk_base = reverse_map[t]
-        # 簡易判斷上市櫃 (這裡先預設上市，後續會驗證)
         ext = ".TWO" if tk_base in ["5498"] else ".TW" 
         return f"{tk_base}{ext}", t
         
     if t in ["華邦"]: return "2344.TW", "華邦電"
         
-    # --- 🚀 AI 智慧雙向翻譯機 ---
+    # AI 智慧雙向翻譯機
     if api_key:
         try:
             genai.configure(api_key=api_key)
@@ -135,7 +133,6 @@ def smart_resolve_ticker(user_input, api_key=""):
             
     ticker_result = ticker_result.upper().replace(" ", "")
     
-    # 雙重保險驗證 yfinance
     try:
         if not yf.Ticker(ticker_result, session=yf_session).fast_info.get('lastPrice'):
             if ".TW" in ticker_result: ticker_result = ticker_result.replace(".TW", ".TWO")
@@ -412,7 +409,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (強固防呆版)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -459,7 +456,6 @@ elif app_mode == "🔍 全球 K 線分析":
                             try: df = df.resample('YE').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
                             except: df = df.resample('Y').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
                         
-                        # 清除空值確保畫圖不報錯
                         df.dropna(subset=['Close'], inplace=True)
                         
                         delta = df['Close'].diff()
@@ -477,10 +473,13 @@ elif app_mode == "🔍 全球 K 線分析":
                         df['MA2'] = df['Close'].rolling(ma2).mean()
                         df['MA3'] = df['Close'].rolling(ma3).mean()
                         
+                        # 💥 終極防禦：強制將 Yahoo 可能傳回的文字 "N/A" 轉為數字，防止當機！
                         try:
                             info = yf.Ticker(ticker_input, session=yf_session).info
-                            pe = info.get('trailingPE', 0)
-                            yield_pct = info.get('dividendYield', 0)
+                            try: pe = float(info.get('trailingPE', 0) or 0)
+                            except: pe = 0
+                            try: yield_pct = float(info.get('dividendYield', 0) or 0)
+                            except: yield_pct = 0
                             sector = info.get('sector', '未提供')
                             industry = info.get('industry', '')
                             sector_str = f"{sector} - {industry}" if industry else sector
@@ -490,8 +489,8 @@ elif app_mode == "🔍 全球 K 線分析":
                         
                         st.markdown("### 📊 多維度戰情儀表板")
                         cc1, cc2, cc3 = st.columns(3)
-                        pe_str = f"{pe:.1f} 倍" if pe and pe > 0 else "無/虧損"
-                        yield_str = f"{yield_pct*100:.2f} %" if yield_pct and yield_pct > 0 else "無配息"
+                        pe_str = f"{pe:.1f} 倍" if pe > 0 else "無/虧損"
+                        yield_str = f"{yield_pct*100:.2f} %" if yield_pct > 0 else "無配息"
                         rsi_str = f"{rsi_val:.1f}"
                         rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
                         
@@ -529,12 +528,11 @@ elif app_mode == "🔍 全球 K 線分析":
                         }
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except Exception as e:
-                # 💡 終極除錯顯影：印出底層錯誤代碼
                 st.error(f"圖表載入失敗，請確認網路或輸入的名稱是否正確。")
                 st.code(f"系統詳細錯誤日誌: {str(e)}")
 
     # ==========================================
-    # 🤖 AI 診斷引擎 (內建 429 降檔保護)
+    # 🤖 AI 診斷引擎
     # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
