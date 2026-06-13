@@ -64,7 +64,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 終極強固解析引擎 (擴充版本地字典)
+# 2. 🛡️ 史詩級三維度解析引擎 (字典 + AI 防幻覺 + Yahoo API)
 # ==========================================
 STOCK_NAME_DICT = {
     "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
@@ -78,68 +78,104 @@ STOCK_NAME_DICT = {
     "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
 }
 
-def get_stock_name(ticker):
-    clean_tk = ticker.replace('.TW', '').replace('.TWO', '')
-    return STOCK_NAME_DICT.get(clean_tk, "個股標的")
+def resolve_suffix(base_tk):
+    """自動補齊後綴並驗證是否存活於 yfinance"""
+    if base_tk.endswith('.TW') or base_tk.endswith('.TWO'):
+        try:
+            if yf.Ticker(base_tk, session=yf_session).fast_info.get('lastPrice'): return base_tk
+        except: pass
+        return base_tk
+    
+    if not base_tk[0].isdigit() and not base_tk.startswith('00'): 
+        try:
+            if yf.Ticker(base_tk, session=yf_session).fast_info.get('lastPrice'): return base_tk
+        except: pass
+        
+    for ext in [".TW", ".TWO"]:
+        tk = f"{base_tk}{ext}"
+        try:
+            if yf.Ticker(tk, session=yf_session).fast_info.get('lastPrice'): return tk
+        except: pass
+        
+    return f"{base_tk}.TW" if base_tk[0].isdigit() else base_tk
+
+def get_yf_chinese_name(query):
+    """備用：從 Yahoo 搜尋抓取名稱"""
+    try:
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(query)}&lang=zh-Hant-TW&region=TW"
+        r = requests.get(url, headers=yf_session.headers, timeout=2)
+        if r.status_code == 200:
+            quotes = r.json().get('quotes', [])
+            if quotes:
+                for q in quotes:
+                    if query in q.get('symbol', ''):
+                        return q.get('shortname', '')
+                return quotes[0].get('shortname', '')
+    except: pass
+    return ""
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def smart_resolve_ticker(user_input, api_key=""):
-    t = user_input.strip().replace(" ", "")
+    t = user_input.strip().upper()
     if not t: return "", ""
-    t_upper = t.upper()
-    
-    if t_upper in ["現金", "CASH"]: return "CASH", "台/外幣保留款"
-    if t_upper.startswith("^"): 
+    if t in ["現金", "CASH"]: return "CASH", "台/外幣保留款"
+    if t.startswith("^"): 
         idx_map = {"^TWII": "台灣加權指數", "^IXIC": "那斯達克", "^GSPC": "標普500", "^SOX": "費城半導體", "^VIX": "恐慌指數"}
-        return t_upper, idx_map.get(t_upper, "大盤指數")
-        
-    if re.match(r'^[A-Z]+$', t_upper): return t_upper, t_upper
+        return t, idx_map.get(t, "大盤指數")
+
+    clean_t = t.replace('.TW', '').replace('.TWO', '')
     
+    # 1. 字典極速配對 (依代碼)
+    if clean_t in STOCK_NAME_DICT:
+        return resolve_suffix(clean_t), STOCK_NAME_DICT[clean_t]
+
+    # 2. 字典極速配對 (依名稱)
+    for tk, name in STOCK_NAME_DICT.items():
+        if t == name.upper() or t in name.upper():
+            return resolve_suffix(tk), name
+
+    # 3. 若為英數字組合 (假設使用者輸入代碼)
+    if re.match(r'^[A-Z0-9]+$', clean_t):
+        valid_tk = resolve_suffix(clean_t)
+        if valid_tk:
+            zh_name = get_yf_chinese_name(clean_t)
+            return valid_tk, zh_name if zh_name else clean_t
+
+    # 4. 若為純中文 (假設使用者輸入股名) -> AI 終極防幻覺翻譯
     ticker_result = ""
     name_result = t
-    is_digit = bool(re.match(r'^\d+$', t))
-    
-    reverse_map = {v: k for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
-    if t in reverse_map:
-        tk_base = reverse_map[t]
-        ext = ".TWO" if tk_base in ["5498"] else ".TW" 
-        return f"{tk_base}{ext}", t
-        
-    if t in ["華邦"]: return "2344.TW", "華邦電"
-        
-    # AI 智慧雙向翻譯機
     if api_key:
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash")
-            if is_digit:
-                prompt = f"請問台灣股票代碼「{t}」的公司簡稱是什麼？以及它是上市(.TW)還是上櫃(.TWO)？請嚴格以「簡稱,代碼加後綴」格式回答（例如：凱崴,5498.TWO），不要有任何其他文字。"
-            else:
-                prompt = f"請問台灣股票「{t}」的完整代碼是什麼？（上市請加 .TW，上櫃請加 .TWO）。請嚴格以「簡稱,代碼加後綴」格式回答（例如：凱崴,5498.TWO），不要有任何其他文字。"
-                
-            res = model.generate_content(prompt).text.strip()
-            if "," in res:
-                parts = res.split(',')
-                name_result = parts[0].strip()
-                ticker_result = parts[1].strip()
+            # ⛔ 嚴格限制 Prompt，徹底封殺 THINK 思考過程
+            prompt = f"你是一個專業的台灣股市系統。使用者輸入了股票名稱：「{t}」。請直接輸出對應的「股票代碼(純數字)」。如果不知道，請輸出「無」。注意：絕對不允許輸出其他文字、標點符號或思考過程。"
+            res = model.generate_content(prompt).text.strip().upper()
+            
+            # 雙重驗證：只有當 AI 回傳的是純英數字時才採納
+            if re.match(r'^[A-Z0-9]+$', res) and res != "無":
+                ticker_result = res
         except:
             pass
             
-    if not ticker_result:
-        if is_digit: 
-            ticker_result = f"{t}.TW" 
-        else: 
-            return "", "" 
-            
-    ticker_result = ticker_result.upper().replace(" ", "")
-    
+    if ticker_result:
+        valid_tk = resolve_suffix(ticker_result)
+        if valid_tk:
+            return valid_tk, name_result
+
+    # 5. 最後防線：Yahoo API 直接硬搜
     try:
-        if not yf.Ticker(ticker_result, session=yf_session).fast_info.get('lastPrice'):
-            if ".TW" in ticker_result: ticker_result = ticker_result.replace(".TW", ".TWO")
-            elif ".TWO" in ticker_result: ticker_result = ticker_result.replace(".TWO", ".TW")
+        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
+        r = requests.get(url, headers=yf_session.headers, timeout=3)
+        if r.status_code == 200:
+            quotes = r.json().get('quotes', [])
+            if quotes:
+                sym = quotes[0].get('symbol', '').upper()
+                shortname = quotes[0].get('shortname', t)
+                return sym, shortname
     except: pass
-    
-    return ticker_result, name_result
+
+    return "", ""
 
 def get_leverage(ticker):
     if ticker == "CASH": return 1.0
@@ -309,8 +345,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
+                # 取得乾淨的中文股名
                 _, zh_name = smart_resolve_ticker(item["ticker"], api_key)
-                if not zh_name: zh_name = get_stock_name(item["ticker"])
                 
                 if item["ticker"] == "CASH":
                     unit_str = "元" if is_tw_mode else "美元"
@@ -409,7 +445,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (強固防呆版)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -473,7 +509,6 @@ elif app_mode == "🔍 全球 K 線分析":
                         df['MA2'] = df['Close'].rolling(ma2).mean()
                         df['MA3'] = df['Close'].rolling(ma3).mean()
                         
-                        # 💥 終極防禦：強制將 Yahoo 可能傳回的文字 "N/A" 轉為數字，防止當機！
                         try:
                             info = yf.Ticker(ticker_input, session=yf_session).info
                             try: pe = float(info.get('trailingPE', 0) or 0)
