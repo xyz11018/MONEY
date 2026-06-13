@@ -30,7 +30,7 @@ st.markdown("""
     /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
-    .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; } /* 新增日期顯示樣式 */
+    .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600; } 
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
@@ -79,40 +79,61 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 💥 即時化量化數據獲取 (包含日期抓取)
+# 3. 💥 強制即時化數據引擎 (破解 Yahoo 歷史延遲)
 # ==========================================
-@st.cache_data(ttl=300)
 def fetch_market_data(ticker):
-    """回傳最新現價、日期、年線MA200、52週高點，計算回撤率"""
+    """回傳最新現價(強制即時)、日期、年線MA200、52週高點，計算回撤率"""
     if ticker == "CASH": 
         now_str = datetime.datetime.now().strftime("%Y-%m-%d")
         return {"price": 1.0, "date": now_str, "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0}
     try:
+        t_obj = yf.Ticker(ticker)
+        
+        # 🚀 突破口：強制抓取「即時報價引擎」，繞過歷史庫的隔日延遲
+        try:
+            realtime_price = float(t_obj.fast_info['lastPrice'])
+        except:
+            realtime_price = None
+
         df = yf.download(ticker, period="2y", progress=False)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             closes = df['Close'].dropna()
             highs = df['High'].dropna()
             if not closes.empty: 
-                price = float(closes.iloc[-1])
-                date_str = closes.index[-1].strftime("%Y-%m-%d") # 抓取最後交易日
+                hist_last_price = float(closes.iloc[-1])
+                date_str = closes.index[-1].strftime("%Y-%m-%d")
+                
+                # 優先使用即時報價，確保拿到今日最新價
+                price = realtime_price if realtime_price is not None else hist_last_price
+                
+                # 如果即時報價和歷史最後一筆不同，代表歷史庫卡住了，我們將日期手動標示為最新！
+                if realtime_price and abs(realtime_price - hist_last_price) > 0.001:
+                    date_str = "最新即時收盤"
+
                 high52w = float(highs.max())
+                if price > high52w: high52w = price # 確保 52w 高點包含最新價
+                
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1]) if len(closes) >= 200 else price
                 drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
+                
                 return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown}
     except: return None
     return None
 
-@st.cache_data(ttl=300)
 def fetch_realtime_data(ticker):
+    """給單純只需抓最新價的模組備用 (同樣加上 fast_info 即時防護)"""
     if ticker == "CASH": return 1.0 
     try:
-        data = yf.download(ticker, period="5d", progress=False)
-        if not data.empty:
-            if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
-            valid_closes = data['Close'].dropna() 
-            if not valid_closes.empty: return float(valid_closes.iloc[-1])
-    except: return None
+        return float(yf.Ticker(ticker).fast_info['lastPrice'])
+    except:
+        try:
+            data = yf.download(ticker, period="5d", progress=False)
+            if not data.empty:
+                if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
+                valid_closes = data['Close'].dropna() 
+                if not valid_closes.empty: return float(valid_closes.iloc[-1])
+        except: return None
     return None
 
 # ==========================================
@@ -132,6 +153,7 @@ def save_portfolio(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
+# 獲取環境數據 (完全即時)
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data else 32.5
 vix_data = fetch_market_data("^VIX")
@@ -226,7 +248,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
                     now_p = m_data["price"]
-                    date_str = m_data["date"] # 取得日期
+                    date_str = m_data["date"]
                     lev = asset.get("leverage", 1.0)
                     is_tw = asset.get("is_tw", is_tw_mode)
                     
@@ -261,7 +283,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
                     else: action_text = "無需調整"
                     
-                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>{currency_str} 保留款</div><div class='date-display'>即時匯率 ({item['date']})</div>", unsafe_allow_html=True)
+                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>{currency_str} 保留款</div><div class='date-display'>匯率更新: {item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>穩定資產</div><div class='data-label' style='margin-top:4px;'>距最高點回撤:</div><div class='data-value'>0.0%</div>", unsafe_allow_html=True)
                 else:
@@ -278,7 +300,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
                         else: action_text = "無需調整"
                         
-                    # 股價下方新增日期
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     
@@ -293,7 +314,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div>", unsafe_allow_html=True)
                 c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x{lev_warning}</div>", unsafe_allow_html=True)
                 
-                # 強制斷行：使用 \n\n 讓買賣指示獨立成新段落
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (真實佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
                 else: 
@@ -339,10 +359,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2, sc3 = st.columns(3)
+            sc1, sc2 = st.columns(2)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
-            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            sc2.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
