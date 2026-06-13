@@ -10,10 +10,10 @@ import os
 import re
 import numpy as np
 import requests
-import google.generativeai as genai # 🤖 導入官方 Gemini 核心套件
+import google.generativeai as genai
 
 # ==========================================
-# 0. 💥 核心抗封鎖引擎：建立偽裝瀏覽器連線 Session
+# 0. 核心抗封鎖引擎
 # ==========================================
 yf_session = requests.Session()
 yf_session.headers.update({
@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與金融終端視覺優化
+# 1. 頁面配置與視覺優化 (終極修正白字隱形)
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -45,20 +45,18 @@ st.markdown("""
     
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
+    /* 🛠️ 強制設定為淺灰底、深色字，無視系統日夜模式，保證 100% 清晰 */
     .dashboard-card {
-        background: #1e293b !important;
+        background-color: #f1f5f9 !important; 
         border-radius: 8px;
         padding: 14px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        color: #f8fafc !important; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-left: 5px solid #10b981;
+        color: #0f172a !important; 
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
     }
-    .dashboard-card b {
-        color: #00ffcc !important;
+    .dashboard-card b, .dashboard-card span {
+        color: #0f172a !important;
         font-weight: 700 !important;
-    }
-    .dashboard-card span {
-        color: #f8fafc !important;
     }
     
     label, .stMarkdown p { font-weight: 500; }
@@ -69,7 +67,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🧠 終極強固解析引擎 (內建本地核心字典，100% 穿透防封鎖)
+# 2. 終極強固解析引擎 (內建本地核心字典)
 # ==========================================
 def resolve_ticker(user_input):
     t = user_input.strip().replace(" ", "")
@@ -79,16 +77,15 @@ def resolve_ticker(user_input):
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 本地常查核心字典（免經過網路，直接硬解轉譯）
     local_map = {
         "啟碁": "6285.TW", "華邦電": "2344.TW", "華邦": "2344.TW", "旺宏": "2337.TW",
         "緯穎": "6669.TW", "台積電": "2330.TW", "台積": "2330.TW", "聯發科": "2454.TW",
         "鴻海": "2317.TW", "長榮": "2603.TW", "正2": "00631L.TW", "台灣五十": "0050.TW",
-        "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA", "超微": "AMD"
+        "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA", "超微": "AMD",
+        "台達電": "2454.TW", "廣達": "2382.TW"
     }
     if t in local_map: return local_map[t]
     
-    # 如果是純數字（台股代碼自動探測）
     if re.match(r'^\d+$', t):
         for ext in [".TW", ".TWO"]:
             try:
@@ -97,7 +94,6 @@ def resolve_ticker(user_input):
             except: pass
         return f"{t}.TW"
             
-    # 備援：向 Yahoo Finance 發起跨國語意搜尋
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=3)
@@ -243,7 +239,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 6285) 即可通關！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。請確認名稱或直接輸入數字代碼。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -321,6 +317,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
+                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -379,7 +376,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (🧠 狀態鎖定防閃退模組)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -398,7 +395,6 @@ elif app_mode == "🔍 全球 K 線分析":
         raw_ticker_input = default_ticker
         click_parse = True
     
-    # 初始化記憶體快取
     if "ai_data" not in st.session_state:
         st.session_state.ai_data = None
     
@@ -406,7 +402,7 @@ elif app_mode == "🔍 全球 K 線分析":
         ticker_input = resolve_ticker(raw_ticker_input)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。如果是較冷門的台股，請『直接輸入四位數代碼』(如: 2337) 即可 100% 通關！")
+            st.error(f"❌ 查無此標的。請確認名稱或直接輸入四位數代碼。")
         else:
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
             
@@ -455,9 +451,9 @@ elif app_mode == "🔍 全球 K 線分析":
                         rsi_str = f"{rsi_val:.1f}"
                         rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
                         
-                        cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span style='font-size:1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
-                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span style='font-size:1.1rem;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
-                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                        cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span>{sector_str}</span></div>", unsafe_allow_html=True)
+                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
                         st.markdown("<br>", unsafe_allow_html=True)
                         
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
@@ -477,11 +473,9 @@ elif app_mode == "🔍 全球 K 線分析":
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
                         
-                        # 🛠️ 完全隱藏 Plotly 互動圖示，徹底解決疊字
                         fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-                        # 🧠 將最新數據寫入暫存記憶體，防止點擊 AI 診斷按鈕後畫面歸零
                         st.session_state.ai_data = {
                             "title": clean_title, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
                             "n3": n3, "ma3": float(df['MA3'].iloc[-1]), "rsi": rsi_val, "rsi_status": rsi_status,
@@ -490,13 +484,12 @@ elif app_mode == "🔍 全球 K 線分析":
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
-    # 🤖 獨立渲染 AI 診斷板塊
     if st.session_state.ai_data is not None:
         st.markdown("---")
         st.subheader("🤖 AI 專屬個股診斷")
         if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
             if not api_key:
-                st.warning("⚠️ 系統沒有偵測到大腦核心。請先在左側邊欄輸入您的 Gemini API Key！")
+                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key 密碼！")
             else:
                 d = st.session_state.ai_data
                 with st.spinner("正在安全調度官方 AI 通道進行大數據診斷..."):
@@ -517,17 +510,10 @@ elif app_mode == "🔍 全球 K 線分析":
                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                     """
                     try:
-                        # 🦾 呼叫 Google 官方標準通道
                         model = genai.GenerativeModel("gemini-1.5-flash")
                         response = model.generate_content(prompt)
                         st.info(response.text)
                     except Exception as ai_err:
-                        st.error(f"❌ 發生權限錯誤 (404)。\n這表示您的 API Key 綁定在無法存取 Gemini 模型舊專案中。")
-                        st.warning("👉 **絕對成功的解法**：請前往 Google AI Studio 網站，點擊「Create API Key」，並在清單中選擇 **【Create API key in new project】**(建立新專案中產生)，將那把全新的密碼貼進來即可解鎖！\n\n系統回傳原始錯誤日誌：")
+                        st.error(f"❌ 發生權限錯誤。\n這表示您的 API Key 尚未開通 Gemini 模型權限。")
+                        st.warning("👉 請確認您已於 Google Cloud 中啟用「Gemini API」，並將產生之金鑰貼入。")
                         st.code(str(ai_err))
-                        
-                        # 🔍 診斷此密碼到底能存取哪些模型
-                        try:
-                            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                            st.write(f"💡 您的舊密碼目前僅支援：`{models}`")
-                        except: pass
