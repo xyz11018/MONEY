@@ -79,13 +79,12 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 💥 強制即時化數據引擎 (加入乖離率 BIAS)
+# 3. 強制即時化數據引擎 (包含年線與回撤)
 # ==========================================
 def fetch_market_data(ticker):
     """回傳最新現價、日期、年線MA200、52週高點，計算回撤率與乖離率"""
     if ticker == "CASH": 
-        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
-        return {"price": 1.0, "date": now_str, "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
+        return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
     try:
         t_obj = yf.Ticker(ticker)
         try: realtime_price = float(t_obj.fast_info['lastPrice'])
@@ -216,7 +215,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
 
     # 📌 數據處理與渲染
     current_view_data = []
-    local_total_val = 0
+    local_total_val, local_total_exp = 0, 0
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
@@ -233,8 +232,10 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif asset["ticker"] == "CASH": now_val_ntd = asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                     else: now_val_ntd = (now_p if is_tw_mode else (now_p * current_rate)) * asset.get("init_shares", 0)
                     
+                    exposure_ntd = now_val_ntd * lev
                     local_total_val += now_val_ntd
-                    current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"]})
+                    local_total_exp += exposure_ntd
+                    current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"]})
 
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
@@ -246,11 +247,14 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 target_val = local_total_val * (item["target_pct"] / 100.0)
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
+                lev_warning = ""
                 
                 if item["ticker"] == "CASH":
+                    currency_str = "TWD" if is_tw_mode else "USD"
+                    unit_str = "元" if is_tw_mode else "美元"
                     adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
-                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
-                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} 單位"
+                    if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} {unit_str}"
+                    elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
                     else: action_text = "無需調整"
                     
                     c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>TWD/USD 保留款</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
@@ -297,6 +301,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
+                    if is_bear and item.get("leverage", 1.0) >= 2.0: lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️破線)</span>"
 
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -341,10 +346,12 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
+            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2 = st.columns(2)
+            sc1, sc2, sc3 = st.columns(3)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"當前大盤恐慌指數", f"{current_vix:.2f} ({vix_status})")
+            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
+            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -355,7 +362,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         with footer_cols[1]:
             if current_view_data:
                 st.subheader(f"📊 {market_label} 權重偏差分析")
-                # 解決分母為0的錯誤保護
                 bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/local_total_val*100) if local_total_val > 0 else 0, "Target": r["target_pct"]} for r in current_view_data])
                 fig_bar = go.Figure(data=[
                     go.Bar(name='真實權重 (%)', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
@@ -368,7 +374,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
 # 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
-    st.title("🔍 全球金融標的技術分析")
+    # 💥 已依照要求成功更新此處標題 💥
+    st.title("🔍 全球金融標的技術分析，也可以中文搜尋")
     
     if market_choice == "台灣加權指數 (台股)": default_ticker = "^TWII"
     elif market_choice == "那斯達克 (美股科技)": default_ticker = "^IXIC"
