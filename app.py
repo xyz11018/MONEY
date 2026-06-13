@@ -33,7 +33,6 @@ yf_session.headers.update({
 # ==========================================
 st.set_page_config(layout="wide", page_title="機構級量化決策終端", page_icon="🏦")
 
-# 💡 隱私模式全域變數設定
 privacy_mode = st.sidebar.toggle("👁️ 隱藏金額防窺 (Privacy Mode)", value=False)
 
 def fmt_money(val, decimals=0):
@@ -74,7 +73,6 @@ st.markdown("""
     .modebar { display: none !important; }
     hr { border-color: #e2e8f0; margin: 2rem 0; }
     
-    /* 自訂 Tab 樣式美化 */
     .stTabs [data-baseweb="tab-list"] { gap: 8px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f8fafc; border-radius: 6px 6px 0 0; padding: 0 20px; color: #64748b; font-weight: 700;}
     .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: 3px solid #10b981; }
@@ -468,17 +466,52 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
     
     st.markdown(f'<h1>💼 {market_label} 量化部位管理 (Portfolio)</h1>', unsafe_allow_html=True)
     
-    # 💡 核心更新：使用 Tabs 分離「看盤區」與「編輯區」，版面極致乾淨
     tab_monitor, tab_edit = st.tabs(["📊 動態量化監控 (Live Dashboard)", "📓 歷史建倉明細與配置 (Trade Lots)"])
     
     with tab_edit:
-        st.markdown("### 📜 分批建倉日誌 (Trade Lots)")
-        st.info("💡 **提示**：像使用 Excel 一樣，在下方表格自由新增、修改您的每一筆【分批買進紀錄】。空白列將自動被系統忽略。")
+        # 💡 閃電建倉區域
+        st.markdown("### ⚡ 快速新增當日建倉 (Quick Add Trade)")
+        st.info("💡 買進新標的？直接在此輸入，**不需打 .TW 後綴**，系統會自動寫入下方的完整日誌中。")
+        with st.form(key=f"quick_add_form_{market_label}"):
+            qa_cols = st.columns([2, 1.5, 1.5, 1.5, 1.5])
+            qa_tk = qa_cols[0].text_input("標的代碼或名稱 (如: 0050)")
+            qa_shares = qa_cols[1].number_input("股數 (現金填金額)", min_value=0, step=100, format="%d")
+            qa_price = qa_cols[2].number_input("買進成交價", min_value=0.0, step=1.0)
+            qa_date = qa_cols[3].date_input("買進日期", value=datetime.date.today())
+            submit_quick_add = qa_cols[4].form_submit_button("➕ 寫入建倉日誌", use_container_width=True)
+            
+            if submit_quick_add:
+                if qa_tk and qa_shares > 0:
+                    real_tk, resolved_name = smart_resolve_ticker(qa_tk, api_key)
+                    if real_tk:
+                        db_data["schemes"][current_scheme_name]["lots"].append({
+                            "ticker": real_tk,
+                            "shares": float(qa_shares),
+                            "buy_price": float(qa_price),
+                            "buy_date": qa_date.strftime("%Y-%m-%d")
+                        })
+                        save_portfolio(db_data)
+                        st.success(f"✅ 成功寫入：{resolved_name} ({real_tk}) {qa_shares}股！")
+                        st.rerun()
+                    else:
+                        st.error("⚠️ 無法識別該標的，請重新輸入。")
+                else:
+                    st.warning("⚠️ 請輸入標的名稱與股數。")
+                    
+        st.markdown("<hr style='margin: 1rem 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
+        
+        # 📜 完整建倉日誌 (自動過濾後綴與 NaN)
+        st.markdown("### 📜 完整建倉日誌與修改 (Trade Lots)")
+        st.info("💡 **提示**：可在此處一次性修改多筆歷史紀錄，或勾選最左側核取方塊後按 `Delete` 刪除不要的列。")
         
         lots_df = pd.DataFrame(db_data["schemes"][current_scheme_name].get("lots", []))
-        if lots_df.empty: lots_df = pd.DataFrame(columns=["ticker", "shares", "buy_price", "buy_date"])
-        else: lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
-        
+        if lots_df.empty: 
+            lots_df = pd.DataFrame(columns=["ticker", "shares", "buy_price", "buy_date"])
+        else: 
+            lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
+            # 💡 自動去除 .TW 尾碼，讓畫面乾淨
+            lots_df["ticker"] = lots_df["ticker"].apply(lambda x: str(x).split('.')[0] if pd.notna(x) else "")
+            
         lots_df.columns = ["標的(Ticker)", "股數(Shares)", "買進均價(Price)", "日期(YYYY-MM-DD)"]
         
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
@@ -492,7 +525,7 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
             tk_str = str(tk).strip().upper()
             if tk_str and tk_str not in ["NAN", "NONE"]:
                 unique_tickers.append(tk_str)
-        unique_tickers = list(dict.fromkeys(unique_tickers)) # 移除重複
+        unique_tickers = list(dict.fromkeys(unique_tickers)) 
         
         old_targets = db_data["schemes"][current_scheme_name].get("targets", {})
         target_data = []
@@ -533,7 +566,6 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                 save_portfolio(db_data)
                 st.success("🔒 儲存成功！請切換至左方【📊 動態量化監控】分頁查看最新數據。")
 
-    # 💡 只有在切換到看盤分頁時，才需要抓取數據
     with tab_monitor:
         current_view_data = []
         local_total_val, local_total_exp, local_total_cost, local_total_dividend = 0, 0, 0, 0
