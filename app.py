@@ -20,7 +20,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與視覺優化
+# 1. 頁面配置與專業金融視覺優化 (強制適應亮色模式)
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -44,16 +44,21 @@ st.markdown("""
     
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
+    /* 🛠️ 強制設定戰情儀表板卡片在任何模式下皆為清晰的深灰底、亮色字 */
     .dashboard-card {
-        background: rgba(148, 163, 184, 0.15) !important;
+        background: #1e293b !important;
         border-radius: 8px;
         padding: 14px;
         border: 1px solid rgba(148, 163, 184, 0.3);
-        color: #1e293b !important; 
+        color: #f8fafc !important; 
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
-    .dashboard-card b, .dashboard-card span {
-        color: #1e293b !important;
+    .dashboard-card b {
+        color: #00ffcc !important;
         font-weight: 700 !important;
+    }
+    .dashboard-card span {
+        color: #f8fafc !important;
     }
     
     label, .stMarkdown p { font-weight: 500; }
@@ -64,7 +69,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🧠 全新強固個股解析引擎：結合 Yahoo 原生網路搜尋 (不卡證交所 IP)
+# 2. 🧠 全新強固個股解析引擎 (Yahoo 官方全球搜尋網頁通道)
 # ==========================================
 def resolve_ticker(user_input):
     t = user_input.strip().replace(" ", "")
@@ -83,23 +88,20 @@ def resolve_ticker(user_input):
                     return tk_check
             except: pass
             
-    # 次要處理：直接對 Yahoo Finance 發起跨國語意搜尋（包含中文、英文、代碼）
+    # 次要處理：直接對 Yahoo Finance 發起跨國語意搜尋
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=5)
         if r.status_code == 200:
             quotes = r.json().get('quotes', [])
             if quotes:
-                # 優先挑選台灣市場的標的 (.TW 或 .TWO)
                 for q in quotes:
                     sym = q.get('symbol', '').upper()
                     if sym.endswith(".TW") or sym.endswith(".TWO"): 
                         return sym
-                # 若無，則返回最符合的第一個搜尋結果 (如美股 AAPL)
                 return quotes[0].get('symbol', '').upper()
     except: pass
     
-    # 最後防呆：若是英文字元直接返回
     if re.match(r'^[A-Z0-9^.=]+$', t_upper): return t_upper
     return ""
 
@@ -174,6 +176,7 @@ current_vix = vix_data["price"] if vix_data else 15.0
 
 db_data = load_portfolio()
 
+# --- 側邊欄 ---
 st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
@@ -184,22 +187,22 @@ st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color
 st.sidebar.markdown("---")
 api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (啟動 AI 大腦)", type="password")
 
-app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
+app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股监控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
 
 if app_mode == "🔍 全球 K 線分析":
     st.sidebar.header("🌍 大盤速查")
     market_choice = st.sidebar.radio("快速切換 K 線圖：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
 
-if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
+if app_mode in ["🇹🇼 台股持股监控", "🇺🇸 美股持股監控"]:
     threshold = st.sidebar.slider("⚖️ 再平衡觸發門檻 (%)", 0.0, 10.0, 2.0, 0.5)
-    num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio", []))), min_value=1)
+    num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股监控" else "us_portfolio", []))), min_value=1)
 
 # ==========================================
 # 5. 主功能：資產動態監控盤
 # ==========================================
-if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
-    is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
+if app_mode in ["🇹🇼 台股持股监控", "🇺🇸 美股持股監控"]:
+    is_tw_mode = (app_mode == "🇹🇼 台股持股监控")
     market_label = "台股" if is_tw_mode else "美股"
     current_list_key = "tw_portfolio" if is_tw_mode else "us_portfolio"
     
@@ -235,7 +238,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。請檢查名稱或直接輸入數字代碼。")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。請確認名稱或直接輸入數字代碼。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -344,8 +347,34 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             else: st.write("目前比例完美，可按目標比例投入。")
             st.markdown("</div>", unsafe_allow_html=True)
 
+        st.markdown("---")
+        footer_cols = st.columns([1, 1])
+        with footer_cols[0]:
+            st.subheader(f"💰 {market_label} 綜合指標總結")
+            overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
+            sc1, sc2, sc3 = st.columns(3)
+            sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
+            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
+            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            if current_view_data:
+                pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
+                fig_pie = px.pie(pie_df, values='val', names='tk', hole=0.4, title=f"{market_label}資產 真實比重圖")
+                fig_pie.update_layout(margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+        with footer_cols[1]:
+            if current_view_data:
+                st.subheader(f"📊 {market_label} 權重偏差分析")
+                bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/local_total_val*100) if local_total_val > 0 else 0, "Target": r["target_pct"]} for r in current_view_data])
+                fig_bar = go.Figure(data=[
+                    go.Bar(name='真實權重 (%)', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
+                    go.Bar(name='設定目標 (%)', x=bar_df['tk'], y=bar_df['Target'], marker_color='#475569')
+                ])
+                fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
+                st.plotly_chart(fig_bar, use_container_width=True)
+
 # ==========================================
-# 6. 分頁：全球 K 線分析 (🧠 頂級全自動相容萬用模型引擎)
+# 6. 分頁：全球 K 線分析 (配置硬性點擊解析按鈕，100%防呆)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -357,16 +386,21 @@ elif app_mode == "🔍 全球 K 線分析":
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = "6285"
     
-    if market_choice == "自訂輸入個股": raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (支援中文，如: 啟碁 或 6285)：", default_ticker)
-    else: raw_ticker_input = default_ticker
+    if market_choice == "自訂輸入個股": 
+        raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (如: 啟碁 或 6285)：", default_ticker)
+        # 🛠️ 修正：硬性加上一個手動解析按鈕，徹底解決使用者輸入完沒按 Enter 導致無法搜尋的狀況
+        click_parse = st.button("🔍 點擊開始解析個股數據", type="primary")
+    else: 
+        raw_ticker_input = default_ticker
+        click_parse = True # 大盤速查直接放行
     
-    if raw_ticker_input:
+    if raw_ticker_input and click_parse:
         ticker_input = resolve_ticker(raw_ticker_input)
         
         if not ticker_input:
-            st.error(f"❌ 無法在網路解析此標的。請確認名稱（如：華邦電、旺宏、啟碁）或直接輸入數字代碼。")
+            st.error(f"❌ 無法在網路解析此標的。請確認名稱（如：華邦電、旺宏、啟碁）或直接輸入數字代碼（如：2344）。")
         else:
-            st.caption(f"📊 智慧搜尋成功：系統已成功解析此標的官方代碼為 ` {ticker_input} `，正繪製走勢圖...")
+            st.success(f"📊 智慧搜尋成功：系統已成功解析此標的官方代碼為 ` {ticker_input} `")
             
             try:
                 with st.spinner("正在載入戰情儀表板與技術圖表中..."):
@@ -434,8 +468,15 @@ elif app_mode == "🔍 全球 K 線分析":
                         
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
-                        fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=60, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", modebar=dict(orientation='v', bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc'))
-                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 🛠️ 終極修正：將 displayModeBar 設定為 False，徹底拔掉那排灰色按鈕，疊字問題 100% 根除
+                        fig.update_layout(
+                            xaxis_rangeslider_visible=False, 
+                            height=650, 
+                            margin=dict(t=40, b=10, l=10, r=10), 
+                            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white"
+                        )
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                         st.markdown("---")
                         st.subheader("🤖 AI 專屬個股診斷")
@@ -443,7 +484,7 @@ elif app_mode == "🔍 全球 K 線分析":
                             if not api_key:
                                 st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！")
                             else:
-                                with st.spinner("正透過頂級萬用通道調度 AI 機房進行量化運算..."):
+                                with st.spinner("正在直連 Google 官方最高相容性萬用模型通道..."):
                                     prompt = f"""
                                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供簡明扼要、專業的操作建議。
                                     標的：{clean_title}
@@ -461,27 +502,21 @@ elif app_mode == "🔍 全球 K 線分析":
                                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                                     """
                                     
-                                    # 🛠️ 雙重模型萬用陣列：優先使用最新強制放行的 2.5-flash，若遇到極舊金鑰則自動倒退至 text-bison 相容模式
-                                    models_to_try = ["gemini-2.5-flash", "gemini-1.0-pro", "text-bison"]
-                                    success = False
-                                    
-                                    for model_name in models_to_try:
-                                        try:
-                                            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-                                            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                                            headers = {"Content-Type": "application/json"}
-                                            
-                                            response = requests.post(api_url, json=payload, headers=headers, timeout=12)
-                                            if response.status_code == 200:
-                                                ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
-                                                st.info(ai_text)
-                                                success = True
-                                                break
-                                        except:
-                                            continue
-                                            
-                                    if not success:
-                                        st.error("❌ AI 診斷失敗。這代表您的 API Key 被限制在舊版專案中。建議前往 Google AI Studio 網站，點擊「Create API Key」按鈕，重新建立一組全新的 Key 填入即可解鎖！")
+                                    # 🛠️ 萬用通道：使用相容性最高的核心通用模型名稱 `gemini-pro`
+                                    try:
+                                        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
+                                        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                                        headers = {"Content-Type": "application/json"}
+                                        
+                                        response = requests.post(api_url, json=payload, headers=headers, timeout=15)
+                                        
+                                        if response.status_code == 200:
+                                            ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                                            st.info(ai_text)
+                                        else:
+                                            st.error(f"❌ 錯誤代碼：{response.status_code}。您的 API Key 目前可能被限制在舊版專案中。建議您前往 Google AI Studio 網站，點擊左側「Create API Key」按鈕，重新建立一組全新的 Key 填入側邊欄，即可當場解鎖！")
+                                    except Exception as http_err:
+                                        st.error(f"連線至 Google AI 核心失敗：{http_err}")
 
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
