@@ -22,7 +22,7 @@ yf_session.headers.update({
 # ==========================================
 # 1. 頁面配置與專業金融視覺優化
 # ==========================================
-st.set_page_config(layout="wide", page_title="全球資產動態平衡系統", page_icon="🏦")
+st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
 st.markdown("""
     <style>
@@ -92,11 +92,11 @@ def resolve_ticker(user_input):
         "META": "META", "網飛": "NFLX"
     }
     
-    # 第一關：絕對精確比對 (修正了這裡的變數名稱)
+    # 第一關：絕對精確比對
     if t in local_map: return local_map[t]
     if t in dynamic_tw_dict: return dynamic_tw_dict[t]
     
-    # 第二關：數字探測引擎 (若輸入為純數字如 2344，直接秒殺，不走字串比對)
+    # 第二關：數字探測引擎
     if re.match(r'^\d+[A-Z]?$', t_upper):
         try:
             if yf.Ticker(f"{t_upper}.TW", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TW"
@@ -106,7 +106,7 @@ def resolve_ticker(user_input):
         except: pass
         return f"{t_upper}.TW"
 
-    # 第三關：模糊智慧比對 (解決字眼差異，例如輸入"華邦"對應"華邦電")
+    # 第三關：模糊智慧比對
     for name, ticker in local_map.items():
         if t in name or name in t: return ticker
     for name, ticker in dynamic_tw_dict.items():
@@ -201,7 +201,7 @@ current_vix = vix_data["price"] if vix_data else 15.0
 db_data = load_portfolio()
 
 # --- 側邊欄 ---
-st.sidebar.title("🎛️ 戰術操作終端機")
+st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
 vix_color = "#ef4444" if current_vix >= 25 else ("#f59e0b" if current_vix >= 20 else "#10b981")
@@ -233,7 +233,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業戰術面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼（如: 2330）」或「中文名稱（如: 華邦電）」，系統會自動智慧連結。")
+        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼」或「中文名稱」，系統會自動智慧連結。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -247,7 +247,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 2344 或 華邦電").strip()
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="輸入代碼或名稱").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
             
@@ -442,7 +442,7 @@ elif app_mode == "🔍 全球 K 線分析":
     else: default_ticker = "6285"
     
     if market_choice == "自訂輸入個股":
-        raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (如: 2344 或 華邦電)：", default_ticker)
+        raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱：", default_ticker)
     else: raw_ticker_input = default_ticker
     
     if raw_ticker_input:
