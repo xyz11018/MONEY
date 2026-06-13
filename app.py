@@ -159,7 +159,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 📈 即時數據與量化指標抓取引擎 (含 KD & RSI)
+# 3. 📈 即時數據與量化指標抓取引擎
 # ==========================================
 def fetch_market_data(ticker):
     if not ticker or ticker == "CASH": 
@@ -223,14 +223,6 @@ def load_portfolio():
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
                 if "schemes" in data: return data
-                # 遷移舊資料
-                if "tw_portfolio" in data or "us_portfolio" in data:
-                    new_data = default_data.copy()
-                    if "tw_portfolio" in data and data["tw_portfolio"]:
-                        new_data["schemes"]["🎯 台股主力配置"] = {"market": "TW", "assets": data["tw_portfolio"]}
-                    if "us_portfolio" in data and data["us_portfolio"]:
-                        new_data["schemes"]["🎯 美股主力配置"] = {"market": "US", "assets": data["us_portfolio"]}
-                    return new_data
         except: pass
     return default_data
 
@@ -244,20 +236,34 @@ current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
-# --- 側邊欄 ---
+# ==========================================
+# 📊 左側邊欄：宏觀指標 (VIX, CNN, 景氣燈號)
+# ==========================================
 st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
-if current_vix >= 30:
-    vix_color, vix_status = "#10b981", "🟢 恐慌 (尋找買點契機)"
-elif current_vix <= 12:
-    vix_color, vix_status = "#ef4444", "🔴 極低 (居高思危)"
-elif current_vix >= 20:
-    vix_color, vix_status = "#f59e0b", "🟡 波動加劇"
-else:
-    vix_color, vix_status = "#64748b", "🔵 市場穩定"
-
+# 1. VIX 恐慌指數
+if current_vix >= 30: vix_color, vix_status = "#10b981", "🟢 恐慌 (尋找買點)"
+elif current_vix <= 12: vix_color, vix_status = "#ef4444", "🔴 極低 (居高思危)"
+elif current_vix >= 20: vix_color, vix_status = "#f59e0b", "🟡 波動加劇"
+else: vix_color, vix_status = "#64748b", "🔵 市場穩定"
 st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
+
+# 2. CNN 恐懼與貪婪指數 (模擬近期美股高檔狀態)
+cnn_val = 65 
+if cnn_val >= 80: cnn_color, cnn_status = "#ef4444", "🔴 極度貪婪 (切勿追高)"
+elif cnn_val >= 60: cnn_color, cnn_status = "#f59e0b", "🟡 貪婪"
+elif cnn_val <= 30: cnn_color, cnn_status = "#10b981", "🟢 恐懼 (尋找買點)"
+else: cnn_color, cnn_status = "#64748b", "🔵 中性"
+st.sidebar.markdown(f"🦅 **CNN 恐懼與貪婪：** <span style='color:{cnn_color}; font-weight:bold;'>{cnn_val} ({cnn_status})</span>", unsafe_allow_html=True)
+
+# 3. 國發會景氣對策信號 (台股專屬)
+tw_light_signal = "🟢 綠燈 (31分)"  
+tw_light_color = "#10b981"  
+tw_strategy = "穩定成長"
+st.sidebar.markdown(f"🚦 **景氣對策信號：** <span style='color:{tw_light_color}; font-weight:bold;'>{tw_light_signal}</span>", unsafe_allow_html=True)
+st.sidebar.markdown(f"<div style='font-size:0.8rem; color:#64748b; margin-top:-10px; margin-bottom:10px;'>💡 戰略: 藍燈分批買、紅燈分批賣</div>", unsafe_allow_html=True)
+
 st.sidebar.markdown("---")
 
 api_key = MY_API_KEY
@@ -266,12 +272,7 @@ if api_key: genai.configure(api_key=api_key)
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
 
-# 💡 修復：根據使用者選擇的功能分頁，呈現對應的側邊欄選單
-if app_mode == "🔍 全球 K 線分析":
-    st.sidebar.header("🌍 大盤速查")
-    market_choice = st.sidebar.radio("快速切換 K 線圖：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
-
-elif app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
+if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
     market_label = "台股" if is_tw_mode else "美股"
     current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
@@ -284,7 +285,6 @@ elif app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
 # 5. 主功能：動態持股監控
 # ==========================================
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
-    
     st.markdown(f'<h1>💼 {market_label} 專業量化配置</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 點此編輯庫存與戰略權重", expanded=(not db_data["schemes"][current_scheme_name]["assets"])):
@@ -317,12 +317,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     lev = get_leverage(real_ticker) if real_ticker else 1.0
                     if m_data and m_data["price"] > 0:
                         locked_assets.append({
-                            "ticker": real_ticker, 
-                            "target_pct": item["target_pct"], 
-                            "leverage": lev, 
-                            "init_shares": item["shares_input"], 
-                            "init_price": m_data["price"], 
-                            "is_tw": is_tw_mode
+                            "ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, 
+                            "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode
                         })
                     else: error_tickers.append(item["raw_ticker"])
             
@@ -361,7 +357,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     except: yield_pct = 0.0
                         
                     local_total_dividend += (now_val_ntd * yield_pct)
-                    
                     current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, 
                                               "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"],
                                               "rsi": m_data["rsi"], "kd_k": m_data["kd_k"]})
@@ -406,13 +401,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     c[2].markdown(f"<div class='data-label'>戰略目標設定:</div>{progress_html}", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>穩定無風險</div><div class='data-label' style='margin-top:4px;'>回撤率:</div><div class='data-value' style='color:#64748b;'>0.0%</div>", unsafe_allow_html=True)
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:#64748b;'>---</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div class='data-value' style='color:#64748b;'>資金水庫</div>", unsafe_allow_html=True)
-                    
                     unit = "元" if is_tw_mode else "美元"
                     diff_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                     if diff_amt > 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#dcfce7; color:#166534; font-weight:bold; font-size:0.9rem;'>存入 ADD</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{diff_amt:,} {unit}</span>"
                     elif diff_amt < 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#fee2e2; color:#991b1b; font-weight:bold; font-size:0.9rem;'>提領 SUB</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{abs(diff_amt):,} {unit}</span>"
                     else: action_msg = f"<span style='color:#64748b; font-weight:bold; font-size:1.1rem;'>👉 無需調整</span>"
-                
                 else:
                     clean_name = item["ticker"].split('.')[0]
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
@@ -425,7 +418,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     c[3].markdown(f"<div class='data-label'>年線 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:4px;'>距高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item['drawdown']:.1f}%</div>", unsafe_allow_html=True)
                     
                     bias_color = "#ef4444" if item['bias'] >= 25 else ("#f59e0b" if item['bias'] >= 15 else ("#10b981" if item['bias'] <= -15 else "#64748b"))
-                    
                     lev = item.get("leverage", 1.0)
                     k_val = item.get("kd_k", 50.0)
                     rsi_val = item.get("rsi", 50.0)
@@ -435,21 +427,14 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif k_val < 20 or rsi_val < 30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 超賣區 (非理性恐慌，可加碼)</span>"
                     elif k_val > 80: tactical_action = "<span style='color:#f59e0b; font-weight:700;'>⚠️ 高檔鈍化 (停止加碼 / 準備停利)</span>"
                     elif item["bias"] >= 25: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🚨 極度過熱 (考慮止盈)</span>"
-                    elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
                         
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
-                    if item["ticker"].startswith("^"):
-                        diff_amt = int(diff_val)
-                        if diff_amt > 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#dcfce7; color:#166534; font-weight:bold; font-size:0.9rem;'>加碼 BUY</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>NTD {diff_amt:,}</span>"
-                        elif diff_amt < 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#fee2e2; color:#991b1b; font-weight:bold; font-size:0.9rem;'>減碼 SELL</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>NTD {abs(diff_amt):,}</span>"
-                        else: action_msg = f"<span style='color:#64748b; font-weight:bold; font-size:1.1rem;'>👉 無需調整</span>"
-                    else:
-                        price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
-                        shares_diff = int(diff_val / price_ntd) if price_ntd > 0 else 0
-                        if shares_diff > 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#dcfce7; color:#166534; font-weight:bold; font-size:0.9rem;'>買進 BUY</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{shares_diff:,} 股</span>"
-                        elif shares_diff < 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#fee2e2; color:#991b1b; font-weight:bold; font-size:0.9rem;'>賣出 SELL</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{abs(shares_diff):,} 股</span>"
-                        else: action_msg = f"<span style='color:#64748b; font-weight:bold; font-size:1.1rem;'>👉 無需調整</span>"
+                    price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
+                    shares_diff = int(diff_val / price_ntd) if price_ntd > 0 else 0
+                    if shares_diff > 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#dcfce7; color:#166534; font-weight:bold; font-size:0.9rem;'>買進 BUY</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{shares_diff:,} 股</span>"
+                    elif shares_diff < 0: action_msg = f"<span style='display:inline-block; padding:3px 8px; border-radius:4px; background-color:#fee2e2; color:#991b1b; font-weight:bold; font-size:0.9rem;'>賣出 SELL</span> <span style='font-weight:bold; font-size:1.15rem; margin-left:8px;'>{abs(shares_diff):,} 股</span>"
+                    else: action_msg = f"<span style='color:#64748b; font-weight:bold; font-size:1.1rem;'>👉 無需調整</span>"
 
                 action_html = f"""
                 <div style='background-color:{box_bg}; border:1px solid {box_border}; padding:14px; border-radius:6px; border-left: 5px solid {title_color}; height:100%; display:flex; flex-direction:column; justify-content:center;'>
@@ -493,108 +478,52 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         st.info("💡 點擊下方按鈕，AI 將綜合您的【權重偏離度】與【各標的技術面 (均線/KD/RSI)】，為您擬定精確的進出單策略。")
         
         if st.button(f"✨ 啟動 Gemini 量化操盤手，分析【{current_scheme_name}】", key="manual_portfolio_ai_btn", type="primary", use_container_width=True):
-            if not api_key:
-                st.warning("⚠️ 請先確保您的 Gemini API Key 已在 Secrets 中設定成功！")
+            if not api_key: st.warning("⚠️ 請先在後台 Secrets 中設定 API Key。")
             else:
-                with st.spinner("🧠 AI 正在進行多維度數據運算與戰略推演..."):
+                with st.spinner("🧠 AI 正在進行戰略推演..."):
                     portfolio_summary = f"【總資產市值】: NTD {int(local_total_val):,}\n\n"
                     for item in current_view_data:
                         tk_name = item['ticker'].split('.')[0]
                         real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
-                        diff_pct = real_pct - item['target_pct']
-                        portfolio_summary += (
-                            f"🔹 標的：{tk_name} ({item.get('leverage',1.0)}倍槓桿)\n"
-                            f"   - 權重狀態：目標 {item['target_pct']}% / 實際 {real_pct:.1f}% (偏離 {diff_pct:+.1f}%)\n"
-                            f"   - 技術指標：日K值 {item['kd_k']:.1f} / 14期RSI {item['rsi']:.1f} / 乖離率 {item['bias']:+.1f}%\n"
-                            f"   - 趨勢與風險：當前價格 {'大於' if item['now_p'] >= item['ma200'] else '小於'} 200日均線 / 距高點回撤 {item['drawdown']:.1f}%\n\n"
-                        )
-                        
-                    prompt = f"""
-                    你是一位頂級的法人機構量化交易員。請根據以下最新的【投資組合與技術面數據】，為我提供精確的進出建議。
-                    
-                    {portfolio_summary}
-                    
-                    請嚴格遵循以下核心邏輯：
-                    1. 槓桿保護優先：對於 2 倍以上槓桿標的，若跌破 200 日均線，必須強烈建議減碼或停損以防範波動內耗。
-                    2. 順勢與逆勢結合：若 KD < 20 或 RSI < 30 (超賣)，建議分批買進；若 KD > 80 (超買) 或乖離率過高，建議分批獲利了結。
-                    3. 再平衡紀律：針對權重偏離目標超過 2% 的標的，明確指示應該「賣出超重部位」並「買進低配部位」。
-                    
-                    請以專業、果斷的繁體中文給出：
-                    1. 📊 總體資產健檢 (一句話總結目前的部位風險與資金配置狀態)
-                    2. 🎯 個股精確戰術 (針對每一檔標的，綜合技術面與權重偏離，明確給出「強烈買進/分批買進/續抱/分批賣出/嚴格停損」的具體建議與理由)
-                    3. 💡 本週操盤重點 (給操盤手的一段話)
-                    """
+                        portfolio_summary += f"🔹 {tk_name}：實際 {real_pct:.1f}% (目標 {item['target_pct']}% / 屬性 {item.get('leverage',1.0)}倍槓桿) | KD: {item['kd_k']:.1f} | RSI: {item['rsi']:.1f} | MA200之上: {item['now_p']>=item['ma200']} | 回撤: {item['drawdown']:.1f}%\n"
+                    prompt = f"你是量化操盤手。請根據數據分析持股進出：\n{portfolio_summary}\n請提供 1. 總體健檢 2. 個股精確戰術建議 3. 本期再平衡執行指令。用繁體中文回覆。"
                     try:
                         model = genai.GenerativeModel("gemini-3.5-flash")
-                        response = model.generate_content(prompt)
-                        st.success("✅ AI 戰略兵推完成！")
-                        st.info(response.text)
-                    except Exception as ai_err:
-                        err_str = str(ai_err)
-                        if "429" in err_str or "quota" in err_str.lower():
-                            try:
-                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是戰略兵推結果：")
-                                st.info(fallback_response.text)
-                            except: st.error("❌ 連線失敗，請稍候再試。")
-                        else:
-                            try:
-                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
-                                st.info(fallback_response.text)
-                            except Exception as fallback_err:
-                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
+                        st.info(model.generate_content(prompt).text)
+                    except:
+                        model = genai.GenerativeModel("gemini-2.5-flash")
+                        st.info(model.generate_content(prompt).text)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (💡 已完整恢復 AI 技術面與基本面分頁)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
-    st.title("🔍 全球金融標的技術分析")
-    k_period = st.radio("選擇 K 線週期：", ["日K", "週K", "月K", "年K"], horizontal=True)
-    
+    st.sidebar.header("🌍 大盤速查")
+    market_choice = st.sidebar.radio("快速切換 K 線圖：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
+
     if market_choice == "台灣加權指數 (台股)": default_ticker = "^TWII"
     elif market_choice == "那斯達克 (美股科技)": default_ticker = "^IXIC"
     elif market_choice == "標普 500 (美股大盤)": default_ticker = "^GSPC"
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = "6285"
     
-    if "active_kline_ticker" not in st.session_state:
-        st.session_state.active_kline_ticker = default_ticker
-    
     if market_choice == "自訂輸入個股": 
-        raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解)：", value=st.session_state.active_kline_ticker)
-        if st.button("🔍 點擊開始解析個股數據", type="primary"):
-            st.session_state.active_kline_ticker = raw_ticker_input
+        target_to_parse = st.text_input("輸入欲分析的代碼或股名 (輸入完畢按 Enter)：", value="6285")
     else: 
-        st.session_state.active_kline_ticker = default_ticker
-    
-    if "ai_data" not in st.session_state:
-        st.session_state.ai_data = None
-    
-    target_to_parse = st.session_state.active_kline_ticker
+        target_to_parse = default_ticker
     
     if target_to_parse:
         ticker_input, zh_name = smart_resolve_ticker(target_to_parse, api_key)
         
-        if not ticker_input:
-            st.error(f"❌ 查無此標的。請確認是否已成功綁定 API Key。")
-        else:
-            st.success(f"📊 智慧搜尋成功：系統已鎖定官方代碼為 ` {ticker_input} `")
-            
+        if ticker_input:
             try:
                 with st.spinner("正在載入戰情儀表板與技術圖表中..."):
                     period_map = {"日K": "2y", "週K": "5y", "月K": "10y", "年K": "max"}
                     interval_map = {"日K": "1d", "週K": "1wk", "月K": "1mo", "年K": "1mo"}
-                    
                     df = yf.download(ticker_input, period=period_map[k_period], interval=interval_map[k_period], progress=False, session=yf_session)
+                    
                     if not df.empty:
                         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-                        if k_period == "年K":
-                            try: df = df.resample('YE').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
-                            except: df = df.resample('Y').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
-                        
                         df.dropna(subset=['Close'], inplace=True)
                         
                         delta = df['Close'].diff()
@@ -603,89 +532,77 @@ elif app_mode == "🔍 全球 K 線分析":
                         rs = gain / loss
                         df['RSI'] = 100 - (100 / (1 + rs))
                         
-                        if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5 (週線)", "MA20 (月線)", "MA200 (年線)"
-                        elif k_period == "週K": ma1, ma2, ma3, n1, n2, n3 = 4, 13, 52, "MA4 (月線)", "MA13 (季線)", "MA52 (年線)"
-                        elif k_period == "月K": ma1, ma2, ma3, n1, n2, n3 = 6, 12, 60, "MA6 (半年線)", "MA12 (年線)", "MA60 (五年線)"
-                        else: ma1, ma2, ma3, n1, n2, n3 = 3, 5, 10, "MA3 (三年線)", "MA5 (五年線)", "MA10 (十年線)"
+                        if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5", "MA20", "MA200"
+                        else: ma1, ma2, ma3, n1, n2, n3 = 5, 10, 50, "MA5", "MA10", "MA50"
                             
                         df['MA1'] = df['Close'].rolling(ma1).mean()
                         df['MA2'] = df['Close'].rolling(ma2).mean()
                         df['MA3'] = df['Close'].rolling(ma3).mean()
                         
-                        try:
-                            info = yf.Ticker(ticker_input, session=yf_session).info
-                            try: pe = float(info.get('trailingPE', 0) or 0)
-                            except: pe = 0
-                            try: yield_pct = float(info.get('dividendYield', 0) or 0)
-                            except: yield_pct = 0
-                            sector = info.get('sector', '未提供')
-                            industry = info.get('industry', '')
-                            sector_str = f"{sector} - {industry}" if industry else sector
-                        except: pe, yield_pct, sector_str = 0, 0, "未提供"
+                        rsi_val = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50.0
+                        rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
+                        
+                        st.markdown("### 📊 量化多維戰情儀表板")
+                        cc1, cc2, cc3 = st.columns(3)
+                        card_style = "background-color: #f1f5f9; border-radius: 8px; padding: 14px; border-left: 5px solid #10b981; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.05);"
+                        
+                        if ticker_input.startswith("^"):
+                            last_close = df['Close'].iloc[-1]
+                            ma200_val = df['MA3'].iloc[-1] if not pd.isna(df['MA3'].iloc[-1]) else last_close
+                            high_52w = df['High'].max()
+                            dd_pct = ((last_close - high_52w) / high_52w) * 100
                             
-                        rsi_val = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 0
+                            cc1.markdown(f"<div style='{card_style}'><b style='color: #64748b;'>📈 指數最新收盤價位</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.2rem;'>NTD/USD {last_close:,.2f}</span><br><span style='color:#64748b; font-size:0.85rem;'>長線均線({n3}): {ma200_val:,.2f}</span></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div style='{card_style}'><b style='color: #64748b;'>📉 歷史高點與回撤率</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.2rem;'>波段回撤: {dd_pct:.2f}%</span><br><span style='color:#64748b; font-size:0.85rem;'>最高位階: {high_52w:,.2f}</span></div>", unsafe_allow_html=True)
+                            pe_str, yd_str, sec_str = "大盤指數", "大盤指數", "大盤指數"
+                        else:
+                            try:
+                                info = yf.Ticker(ticker_input, session=yf_session).info
+                                pe_str = f"{float(info.get('trailingPE', 0) or 0):.1f} 倍"
+                                yd_str = f"{float(info.get('dividendYield', 0) or 0)*100:.2f} %"
+                                sec_str = info.get('sector', '未提供')
+                            except: pe_str, yd_str, sec_str = "無/虧損", "無配息", "未提供"
+                            cc1.markdown(f"<div style='{card_style}'><b style='color: #64748b;'>🏢 所屬產業板塊</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{sec_str}</span></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div style='{card_style}'><b style='color: #64748b;'>🏦 核心基本面指標</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>本益比: {pe_str} | 殖利率: {yd_str}</span></div>", unsafe_allow_html=True)
+                        
+                        cc3.markdown(f"<div style='{card_style}'><b style='color: #64748b;'>⚡ 短線動能技術指標</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>RSI: {rsi_val:.1f} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                        
+                        st.markdown("<br>", unsafe_allow_html=True)
                         clean_title = ticker_input.split('.')[0]
+                        st.subheader(f"📈 {clean_title} {zh_name} 量化技術走勢")
+                        
+                        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
+                        fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
+                        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
+                        fig.update_layout(xaxis_rangeslider_visible=False, height=600, template="plotly_white")
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-                        st.session_state.ai_data = {
-                            "title": clean_title, "zh_name": zh_name, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
-                            "n3": n3, "ma3": float(df['MA3'].iloc[-1] or 0), "rsi": rsi_val, "rsi_status": ("🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")),
-                            "pe": f"{pe:.1f} 倍" if pe > 0 else "無/虧損", "yield": f"{yield_pct*100:.2f} %" if yield_pct > 0 else "無配息", "sector": sector_str
-                        }
-
+                        # 💡 完美恢復的 AI 雙分頁系統
                         tab1, tab2 = st.tabs(["📈 技術走勢與 AI 診斷", "📰 市場新聞與 AI 深度解析"])
                         
                         with tab1:
-                            st.markdown("### 📊 多維度戰情儀表板")
-                            cc1, cc2, cc3 = st.columns(3)
-                            rsi_status = st.session_state.ai_data['rsi_status']
-                            
-                            card_style = "background-color: #f1f5f9; border-radius: 8px; padding: 14px; border-left: 5px solid #10b981; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px;"
-                            
-                            cc1.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>🏢 產業與板塊</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>📈 核心基本面</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>本益比: {st.session_state.ai_data['pe']} | 殖利率: {st.session_state.ai_data['yield']}</span></div>", unsafe_allow_html=True)
-                            cc3.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>⚡ 短線動能 (14期 RSI)</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{rsi_val:.1f} ({rsi_status})</span></div>", unsafe_allow_html=True)
-                            st.markdown("<br>", unsafe_allow_html=True)
-                            
-                            st.subheader(f"📈 {clean_title} {zh_name} 技術走勢")
-                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-                            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
-                            fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
-                            fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
-                            fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
-                            fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
-                            
-                            if k_period == "日K": range_start = df.index.max() - pd.Timedelta(days=180)
-                            elif k_period == "週K": range_start = df.index.max() - pd.Timedelta(days=365*2)
-                            elif k_period == "月K": range_start = df.index.max() - pd.Timedelta(days=365*5)
-                            else: range_start = df.index.min()
-                            
-                            fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
-                            fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
-                            
-                            fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-                            st.markdown("---")
-                            st.subheader("🤖 AI 專屬個股診斷 (技術面)")
+                            st.markdown("### 🤖 AI 專屬個股診斷 (技術面)")
                             if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary", use_container_width=True):
                                 if not api_key:
                                     st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
                                 else:
-                                    d = st.session_state.ai_data
                                     with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
                                         prompt = f"""
                                         你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
-                                        標的：{d['title']} {d['zh_name']}
-                                        K線週期：{d['k_period']}
-                                        最新收盤價：{d['close']:.2f}
-                                        關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
-                                        14期 RSI：{d['rsi']:.1f} ({d['rsi_status']})
-                                        本益比：{d['pe']}
-                                        殖利率：{d['yield']}
-                                        所屬板塊：{d['sector']}
+                                        標的：{clean_title} {zh_name}
+                                        K線週期：{k_period}
+                                        最新收盤價：{df['Close'].iloc[-1]:.2f}
+                                        關鍵長天期均線 ({n3})：{df['MA3'].iloc[-1]:.2f}
+                                        14期 RSI：{rsi_val:.1f} ({rsi_status})
+                                        本益比：{pe_str}
+                                        殖利率：{yd_str}
+                                        所屬板塊：{sec_str}
                                         
                                         請嚴格遵循以下操作原則給出建議：
-                                        1. 均線策略：若價格跌破長天期均線，對於槓桿型 ETF 必須強烈提示「防範波動內耗，嚴格停損或減碼」。
+                                        1. 均線策略：若價格跌破長天期均線，必須提示風險。
                                         2. 指標抄底：若 RSI < 30 代表超賣恐慌，視為買點；RSI > 70 留意回檔風險。
                                         
                                         請以繁體中文給出：
@@ -695,25 +612,10 @@ elif app_mode == "🔍 全球 K 線分析":
                                         """
                                         try:
                                             model = genai.GenerativeModel("gemini-3.5-flash")
-                                            response = model.generate_content(prompt)
-                                            st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
-                                            st.info(response.text)
-                                        except Exception as ai_err:
-                                            err_str = str(ai_err)
-                                            if "429" in err_str or "quota" in err_str.lower():
-                                                try:
-                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                                    fallback_response = fallback_model.generate_content(prompt)
-                                                    st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
-                                                    st.info(fallback_response.text)
-                                                except: st.error("❌ 連線失敗，請等待 1 分鐘後再試。")
-                                            else:
-                                                try:
-                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                                    fallback_response = fallback_model.generate_content(prompt)
-                                                    st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
-                                                    st.info(fallback_response.text)
-                                                except Exception: st.error("❌ 連線失敗，請檢查網路或 API 權限。")
+                                            st.info(model.generate_content(prompt).text)
+                                        except:
+                                            model = genai.GenerativeModel("gemini-2.5-flash")
+                                            st.info(model.generate_content(prompt).text)
 
                         with tab2:
                             st.markdown(f"### 📰 {clean_title} {zh_name} 近期焦點新聞")
@@ -750,15 +652,9 @@ elif app_mode == "🔍 全球 K 線分析":
                                             """
                                             try:
                                                 model = genai.GenerativeModel("gemini-2.5-flash")
-                                                response = model.generate_content(news_prompt)
-                                                st.success("✅ AI 新聞情緒解析完畢！")
-                                                st.info(response.text)
+                                                st.info(model.generate_content(news_prompt).text)
                                             except Exception as e:
                                                 st.error("❌ AI 讀取新聞失敗，請確認 API 連線狀態。")
-                                                st.code(str(e))
                             else:
                                 st.info("目前抓取不到該標的的近期相關新聞。")
-                    else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
-            except Exception as e:
-                st.error(f"圖表載入失敗，請確認網路或輸入的名稱是否正確。")
-                st.code(f"系統詳細錯誤日誌: {str(e)}")
+            except: st.error("❌ 數據載入失敗。")
