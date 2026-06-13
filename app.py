@@ -13,13 +13,12 @@ import requests
 import google.generativeai as genai
 
 # ==========================================
-# 🔑 終極安全 API Key 讀取機制 (完美相容 GitHub 與 Streamlit Cloud)
+# 🔑 終極安全 API Key 讀取機制 (背景靜默載入)
 # ==========================================
 try:
     # 系統會自動去 Streamlit Cloud 後台的 Secrets 抓取密碼
     MY_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
-    # 如果找不到密碼，就先留白，讓使用者能在網頁側邊欄手動輸入
     MY_API_KEY = ""
 
 # ==========================================
@@ -254,8 +253,8 @@ st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color
 
 st.sidebar.markdown("---")
 
-# 💡 自動載入您透過 Secrets 綁定的 Key
-api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (已自動載入)", value=MY_API_KEY, type="password")
+# 💡 隱藏了輸入框，系統在背景默默為您掛載 API Key
+api_key = MY_API_KEY
 if api_key:
     genai.configure(api_key=api_key)
 
@@ -281,7 +280,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 點此調整：持有股數與目標權重 ({market_label})", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：輸入 Gemini Key 後，即可直接輸入任何中文股名！修改完畢請點擊下方鎖定按鈕。")
+        st.info(f"💡 提示：AI 引擎已啟動，支援輸入任何中文股名！修改完畢請點擊下方鎖定按鈕。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
@@ -310,7 +309,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認左側是否已成功綁定 API Key。")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認 API Key 是否已於後台綁定。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
