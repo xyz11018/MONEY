@@ -30,6 +30,7 @@ st.markdown("""
     /* 專業金融數據字體板塊 */
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
+    .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; } /* 新增日期顯示樣式 */
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
@@ -78,12 +79,14 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 💥 即時化量化數據獲取 (移除所有 cache 快存裝飾器，確保即時更新)
+# 3. 💥 即時化量化數據獲取 (包含日期抓取)
 # ==========================================
+@st.cache_data(ttl=300)
 def fetch_market_data(ticker):
-    """回傳最新現價、年線MA200、52週高點，計算回撤率"""
+    """回傳最新現價、日期、年線MA200、52週高點，計算回撤率"""
     if ticker == "CASH": 
-        return {"price": 1.0, "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0}
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        return {"price": 1.0, "date": now_str, "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0}
     try:
         df = yf.download(ticker, period="2y", progress=False)
         if not df.empty:
@@ -92,13 +95,15 @@ def fetch_market_data(ticker):
             highs = df['High'].dropna()
             if not closes.empty: 
                 price = float(closes.iloc[-1])
+                date_str = closes.index[-1].strftime("%Y-%m-%d") # 抓取最後交易日
                 high52w = float(highs.max())
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1]) if len(closes) >= 200 else price
                 drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
-                return {"price": price, "ma200": ma200, "high52w": high52w, "drawdown": drawdown}
+                return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown}
     except: return None
     return None
 
+@st.cache_data(ttl=300)
 def fetch_realtime_data(ticker):
     if ticker == "CASH": return 1.0 
     try:
@@ -127,7 +132,6 @@ def save_portfolio(data):
     with open(DB_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# 獲取環境數據 (完全即時)
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data else 32.5
 vix_data = fetch_market_data("^VIX")
@@ -222,6 +226,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
                     now_p = m_data["price"]
+                    date_str = m_data["date"] # 取得日期
                     lev = asset.get("leverage", 1.0)
                     is_tw = asset.get("is_tw", is_tw_mode)
                     
@@ -233,7 +238,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     local_total_val += now_val_ntd
                     local_total_exp += exposure_ntd
                     
-                    current_view_data.append({**asset, "now_p": now_p, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"]})
+                    current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"]})
 
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
@@ -247,6 +252,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 action_text = ""
                 lev_warning = ""
                 
+                # 計算與渲染
                 if item["ticker"] == "CASH":
                     currency_str = "TWD" if is_tw_mode else "USD"
                     unit_str = "元" if is_tw_mode else "美元"
@@ -255,7 +261,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif adjust_amt < 0: action_text = f"需減少: {abs(adjust_amt):,} {unit_str}"
                     else: action_text = "無需調整"
                     
-                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>{currency_str} 保留款</div>", unsafe_allow_html=True)
+                    c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='price-display'>{currency_str} 保留款</div><div class='date-display'>即時匯率 ({item['date']})</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>持有數量:</div><div class='data-value'>{int(item.get('init_shares', 0)):,}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>穩定資產</div><div class='data-label' style='margin-top:4px;'>距最高點回撤:</div><div class='data-value'>0.0%</div>", unsafe_allow_html=True)
                 else:
@@ -272,7 +278,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
                         else: action_text = "無需調整"
                         
-                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div>", unsafe_allow_html=True)
+                    # 股價下方新增日期
+                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     
                     is_bear = item['now_p'] < item['ma200']
@@ -286,10 +293,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div>", unsafe_allow_html=True)
                 c[4].markdown(f"<div class='data-label'>槓桿水位:</div><div class='data-value'>{item.get('leverage', 1.0)}x{lev_warning}</div>", unsafe_allow_html=True)
                 
+                # 強制斷行：使用 \n\n 讓買賣指示獨立成新段落
                 if abs(diff) > threshold: 
-                    c[5].warning(f"⚠️ 偏離 {diff:+.1f}%\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+                    c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (真實佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
                 else: 
-                    c[5].success(f"✅ 平衡區間\n(真實佔比: {real_pct:.1f}%)\n👉 **{action_text}**")
+                    c[5].success(f"✅ 平衡區間 (真實佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
 
         # 📌 💰 動態資金加碼分配器
         st.markdown("---")
@@ -324,16 +332,17 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             else: st.write("目前比例完美，可按目標比例等分投入。")
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # 📌 底部指標與圖表 (移除總曝險指標欄位)
+        # 📌 底部指標與圖表
         st.markdown("---")
         footer_cols = st.columns([1, 1])
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             overall_leverage = local_total_exp / local_total_val if local_total_val > 0 else 1.0
             
-            sc1, sc2 = st.columns(2)
+            sc1, sc2, sc3 = st.columns(3)
             sc1.metric(f"總市值 (NTD)", f"{int(local_total_val):,}")
-            sc2.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
+            sc2.metric(f"總曝險 (NTD)", f"{int(local_total_exp):,}")
+            sc3.metric(f"實際整體槓桿", f"{overall_leverage:.2f} 倍")
 
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -353,7 +362,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (滿版無新聞干擾)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
