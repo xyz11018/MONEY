@@ -58,7 +58,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🛡️ 史詩級三維度解析引擎 (支援台股 ETF)
+# 2. 🛡️ 史詩級三維度解析引擎
 # ==========================================
 STOCK_NAME_DICT = {
     "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
@@ -73,7 +73,8 @@ STOCK_NAME_DICT = {
     "00936": "台新永續高息中小", "00772B": "中信高評級公司債",
     "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
     "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
-    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
+    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF", "VOO": "標普500 ETF", 
+    "TQQQ": "納斯達克3倍做多", "QLD": "納斯達克2倍做多"
 }
 
 def resolve_suffix(base_tk):
@@ -158,11 +159,11 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 即時數據抓取
+# 3. 📈 即時數據與量化指標抓取引擎 (新增 KD & RSI)
 # ==========================================
 def fetch_market_data(ticker):
     if not ticker or ticker == "CASH": 
-        return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
+        return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0, "rsi": 50.0, "kd_k": 50.0}
     try:
         t_obj = yf.Ticker(ticker, session=yf_session)
         try: realtime_price = float(t_obj.fast_info.get('lastPrice', 0) or 0)
@@ -171,19 +172,45 @@ def fetch_market_data(ticker):
         df = yf.download(ticker, period="2y", progress=False, session=yf_session)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-            closes = df['Close'].dropna()
-            highs = df['High'].dropna()
+            df.dropna(subset=['Close'], inplace=True)
+            
+            closes = df['Close']
+            highs = df['High']
+            lows = df['Low']
+            
             if not closes.empty: 
                 hist_last_price = float(closes.iloc[-1] or 0)
                 date_str = closes.index[-1].strftime("%Y-%m-%d")
                 price = realtime_price if realtime_price > 0 else hist_last_price
                 if realtime_price > 0: date_str = "最新即時收盤"
+                
+                # 計算 MA200、回撤與乖離
                 high52w = float(highs.max() or price)
                 if price > high52w: high52w = price 
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1] or price) if len(closes) >= 200 else price
                 drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
                 bias = ((price - ma200) / ma200) * 100 if ma200 > 0 else 0.0
-                return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, "bias": bias}
+                
+                # 💡 新增：計算 14期 RSI
+                delta = closes.diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                rsi_series = 100 - (100 / (1 + rs))
+                current_rsi = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
+                
+                # 💡 新增：計算 9天 KD 指標 (K值)
+                roll_low = lows.rolling(window=9).min()
+                roll_high = highs.rolling(window=9).max()
+                rsv = (closes - roll_low) / (roll_high - roll_low) * 100
+                k_series = rsv.ewm(com=2, adjust=False).mean()
+                current_k = float(k_series.iloc[-1]) if not pd.isna(k_series.iloc[-1]) else 50.0
+
+                return {
+                    "price": price, "date": date_str, "ma200": ma200, 
+                    "high52w": high52w, "drawdown": drawdown, "bias": bias,
+                    "rsi": current_rsi, "kd_k": current_k
+                }
     except: return None
     return None
 
@@ -196,8 +223,7 @@ def load_portfolio():
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
-                if "tw_portfolio" in data or "us_portfolio" in data:
-                    return data
+                if "tw_portfolio" in data or "us_portfolio" in data: return data
         except: pass
     return default_data
 
@@ -215,17 +241,23 @@ current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
-vix_color = "#ef4444" if current_vix >= 25 else ("#f59e0b" if current_vix >= 20 else "#10b981")
-vix_status = "⚠️ 極度恐慌" if current_vix >= 25 else ("⚡ 波動加劇" if current_vix >= 20 else "✅ 市場穩定")
-st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
+# 💡 依照您的要求優化 VIX 情緒顯示
+if current_vix >= 30:
+    vix_color, vix_status = "#10b981", "🟢 恐慌 (尋找買點契機)"
+elif current_vix <= 12:
+    vix_color, vix_status = "#ef4444", "🔴 極低 (居高思危)"
+elif current_vix >= 20:
+    vix_color, vix_status = "#f59e0b", "🟡 波動加劇"
+else:
+    vix_color, vix_status = "#64748b", "🔵 市場穩定"
 
+st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
 api_key = MY_API_KEY
 if api_key:
     genai.configure(api_key=api_key)
 
-# 💡 移除方案管理，回歸最簡單直覺的市場切換
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
 
@@ -244,7 +276,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>💼 {market_label} 專業量化配置</h1>', unsafe_allow_html=True)
     
-    # 💡 更新：重新加入「目標權重」讓使用者可以自訂 4:4:2 等比例
     with st.expander(f"⚙️ 點此編輯庫存與戰略權重", expanded=(not db_data[current_list_key])):
         st.info(f"💡 提示：請輸入您的持股數量，並手動設定理想的【目標權重%】（例如 40, 40, 20），系統會自動計算買賣缺口。")
         cols = st.columns([2, 2, 2])
@@ -257,7 +288,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             r_cols = st.columns([2, 2, 2])
             hist = db_data[current_list_key][i] if i < len(db_data[current_list_key]) else {"ticker": "", "init_shares": 0, "target_pct": 0}
             display_tk = hist["ticker"].split('.')[0] if hist.get("ticker") else ""
-            
             safe_shares = int(max(0, float(hist.get("init_shares", 0))))
             safe_pct = float(hist.get("target_pct", 0.0))
             
@@ -277,7 +307,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     if m_data and m_data["price"] > 0:
                         locked_assets.append({
                             "ticker": real_ticker, 
-                            "target_pct": item["target_pct"], # 💡 存下使用者手動設定的 %
+                            "target_pct": item["target_pct"], 
                             "leverage": lev, 
                             "init_shares": item["shares_input"], 
                             "init_price": m_data["price"], 
@@ -285,8 +315,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         })
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: 
-                st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認 API Key。")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -299,7 +328,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
-        with st.spinner(f"🔄 正在同步報價與股息資料..."):
+        with st.spinner(f"🔄 正在同步報價與量化指標..."):
             for asset in target_portfolio:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
@@ -322,7 +351,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         
                     local_total_dividend += (now_val_ntd * yield_pct)
                     
-                    current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"]})
+                    current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, 
+                                              "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"],
+                                              "rsi": m_data["rsi"], "kd_k": m_data["kd_k"]}) # 傳入 KD/RSI
 
         if current_view_data:
             st.markdown("### 📊 總體資產概況 (Portfolio Overview)")
@@ -383,12 +414,26 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     c[3].markdown(f"<div class='data-label'>年線 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:4px;'>距高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item['drawdown']:.1f}%</div>", unsafe_allow_html=True)
                     
                     bias_color = "#ef4444" if item['bias'] >= 25 else ("#f59e0b" if item['bias'] >= 15 else ("#10b981" if item['bias'] <= -15 else "#64748b"))
+                    
+                    # 💡 核心更新：導入您的量化實戰戰術 (均線防護、KD/RSI 抄底)
+                    lev = item.get("leverage", 1.0)
+                    k_val = item.get("kd_k", 50.0)
+                    rsi_val = item.get("rsi", 50.0)
+                    
                     tactical_action = "<span style='color:#64748b;'>⚖️ 依戰略比例持有</span>"
-                    if item["bias"] >= 25: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🚨 極度過熱 (考慮止盈)</span>"
-                    elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
-                    elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
-                    elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
-                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守</span>"
+                    if is_bear and lev >= 2.0:
+                        # 策略A：波動內耗防禦
+                        tactical_action = "<span style='color:#ef4444; font-weight:700;'>🛑 破年線 (防範波動內耗，嚴格減碼)</span>"
+                    elif k_val < 20 or rsi_val < 30:
+                        # 策略B：左側抄底
+                        tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 超賣區 (非理性恐慌，分批加碼)</span>"
+                    elif k_val > 80:
+                        tactical_action = "<span style='color:#f59e0b; font-weight:700;'>⚠️ 高檔鈍化 (停止加碼 / 準備停利)</span>"
+                    elif item["bias"] >= 25: 
+                        tactical_action = "<span style='color:#ef4444; font-weight:700;'>🚨 極度過熱 (考慮止盈)</span>"
+                    elif item["drawdown"] <= -30: 
+                        tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
+                        
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                     if item["ticker"].startswith("^"):
@@ -438,7 +483,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ==========================================
-        # 🤖 AI 投資組合總體檢
+        # 🤖 AI 投資組合總體檢 (注入三大策略邏輯)
         # ==========================================
         st.markdown("---")
         st.subheader("🤖 AI 投資組合戰略總體檢")
@@ -446,48 +491,50 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             if not api_key:
                 st.warning("⚠️ 請先確保您的 Gemini API Key 已在 Secrets 中設定成功！")
             else:
-                with st.spinner("🧠 正在將您的資產結構傳送給 Gemini 3.5 進行深度戰略解析..."):
+                with st.spinner("🧠 正在將您的資產結構與量化指標傳送給 Gemini 3.5 進行戰略解析..."):
                     portfolio_summary = f"總市值: NTD {int(local_total_val):,}\n"
                     for item in current_view_data:
                         tk_name = item['ticker'].split('.')[0]
                         real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
-                        portfolio_summary += f"- {tk_name}：目前佔比 {real_pct:.1f}% (設定目標 {item['target_pct']}%)，當前乖離率 {item['bias']:.1f}%，距高點回撤 {item['drawdown']:.1f}%\n"
+                        portfolio_summary += f"- {tk_name}：目前佔比 {real_pct:.1f}% (設定目標 {item['target_pct']}%)，屬性 {item.get('leverage',1.0)}倍槓桿，日K值 {item['kd_k']:.1f}，RSI {item['rsi']:.1f}，距高點回撤 {item['drawdown']:.1f}%\n"
                         
                     prompt = f"""
-                    你現在是一位頂級的財富管理顧問與量化交易員。
-                    請為我診斷以下的【{market_label}投資組合】目前狀態。
+                    你現在是一位頂級的量化交易員。請為我診斷以下的【{market_label}投資組合】狀態。
                     
                     【投資組合概況】
                     {portfolio_summary}
                     
-                    請以專業但白話的繁體中文給出：
-                    1. 資金配置健檢 (整體風險是否過度集中？防禦性部位是否足夠？)
-                    2. 再平衡具體操作建議 (針對偏離目標權重過多、或乖離率/回撤異常的特定標的，提出該買或賣的具體建議)
-                    3. 下階段總體戰略策略
+                    請嚴格遵循以下三大槓桿與原型 ETF 操作原則來給出建議：
+                    1. 均線與槓桿策略 (策略A)：若市場環境轉空，2倍以上槓桿ETF必須強烈建議減碼或避險，防範「波動內耗」。
+                    2. 指標抄底 (策略B)：若標的的 KD < 20 或 RSI < 30，視為超賣區，是分批加碼絕佳時機；若 KD > 80，則提醒高檔鈍化風險。
+                    3. 動態再平衡 (策略C)：依照目標權重%，若偏離過大，必須明確指出「該賣出誰、買進誰」以維持紀律。
+                    
+                    請以專業的繁體中文條列式給出：
+                    1. 資金配置健檢 (現金水位是否安全？風險是否集中？)
+                    2. 針對個別標的之具體戰術行動 (基於 KD/RSI 指標)
+                    3. 本期再平衡執行指令
                     """
                     try:
                         model = genai.GenerativeModel("gemini-3.5-flash")
                         response = model.generate_content(prompt)
-                        st.success("✅ 成功產生 AI 投資組合診斷報告！")
+                        st.success("✅ 成功產生 AI 投資組合量化診斷報告！")
                         st.info(response.text)
                     except Exception as ai_err:
                         err_str = str(ai_err)
                         if "429" in err_str or "quota" in err_str.lower():
-                            st.warning("⚠️ 3.5 模型額度已滿，自動切換至 2.5 穩定版...")
                             try:
                                 fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                 fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
+                                st.success("✅ 自動降檔至 2.5 模型，以下是診斷結果：")
                                 st.info(fallback_response.text)
                             except: st.error("❌ 連線失敗，請稍候再試。")
                         else:
                             try:
                                 fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                 fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                st.success("✅ 成功對接 Gemini 2.5 模型！")
                                 st.info(fallback_response.text)
-                            except Exception as fallback_err:
-                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
+                            except Exception: st.error("❌ 連線失敗，請檢查網路。")
 
 # ==========================================
 # 6. 分頁：全球 K 線分析
@@ -521,9 +568,9 @@ elif app_mode == "🔍 全球 K 線分析":
         ticker_input, zh_name = smart_resolve_ticker(target_to_parse, api_key)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。若輸入中文失敗，請確認是否已成功綁定 API Key。")
+            st.error(f"❌ 查無此標的。請確認是否已成功綁定 API Key。")
         else:
-            st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
+            st.success(f"📊 智慧搜尋成功：系統已鎖定官方代碼為 ` {ticker_input} `")
             
             try:
                 with st.spinner("正在載入戰情儀表板與技術圖表中..."):
@@ -608,7 +655,7 @@ elif app_mode == "🔍 全球 K 線分析":
                             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                             st.markdown("---")
-                            st.subheader("🤖 AI 專屬個股診斷 (技術面)")
+                            st.subheader("🤖 AI 專屬個股診斷 (量化策略面)")
                             if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
                                 if not api_key:
                                     st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
@@ -626,10 +673,14 @@ elif app_mode == "🔍 全球 K 線分析":
                                         殖利率：{d['yield']}
                                         所屬板塊：{d['sector']}
                                         
+                                        請嚴格遵循以下操作原則給出建議：
+                                        1. 均線策略：若價格跌破長天期均線，對於槓桿型 ETF 必須強烈提示「防範波動內耗，嚴格停損或減碼」。
+                                        2. 指標抄底：若 RSI < 30 代表超賣恐慌，視為買點；RSI > 70 留意回檔風險。
+                                        
                                         請以繁體中文給出：
-                                        1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
+                                        1. 盤勢總結 (多頭/空頭/盤整)
                                         2. 多空風險評估 (結合 RSI 與均線判斷)
-                                        3. 短中線具體操作建議
+                                        3. 具體操作建議
                                         """
                                         try:
                                             model = genai.GenerativeModel("gemini-3.5-flash")
@@ -639,7 +690,6 @@ elif app_mode == "🔍 全球 K 線分析":
                                         except Exception as ai_err:
                                             err_str = str(ai_err)
                                             if "429" in err_str or "quota" in err_str.lower():
-                                                st.warning("⚠️ 3.5 模型額度已滿，自動切換至 2.5 版穩定模型...")
                                                 try:
                                                     fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                                     fallback_response = fallback_model.generate_content(prompt)
