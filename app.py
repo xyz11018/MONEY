@@ -37,7 +37,6 @@ st.set_page_config(layout="wide", page_title="機構級量化決策終端", page
 privacy_mode = st.sidebar.toggle("👁️ 隱藏金額防窺 (Privacy Mode)", value=False)
 
 def fmt_money(val, decimals=0):
-    """依照隱私模式格式化金額"""
     if privacy_mode: return "****"
     if decimals == 0: return f"{int(val):,}"
     return f"{float(val):,.{decimals}f}"
@@ -55,6 +54,7 @@ st.markdown("""
     }
     .tw-market { border-left: 5px solid #059669; }
     .us-market { border-left: 5px solid #2563eb; }
+    .global-market { border-left: 5px solid #8b5cf6; }
     
     .pro-card {
         background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
@@ -105,15 +105,8 @@ STOCK_NAME_DICT = {
 }
 
 def resolve_suffix(base_tk):
-    if base_tk.endswith('.TW') or base_tk.endswith('.TWO'):
-        try:
-            if yf.Ticker(base_tk, session=yf_session).fast_info.get('lastPrice'): return base_tk
-        except: pass
-        return base_tk
-    if not base_tk[0].isdigit() and not base_tk.startswith('00'): 
-        try:
-            if yf.Ticker(base_tk, session=yf_session).fast_info.get('lastPrice'): return base_tk
-        except: pass
+    if base_tk.endswith('.TW') or base_tk.endswith('.TWO'): return base_tk
+    if not base_tk[0].isdigit() and not base_tk.startswith('00'): return base_tk
     for ext in [".TW", ".TWO"]:
         tk = f"{base_tk}{ext}"
         try:
@@ -135,18 +128,14 @@ def smart_resolve_ticker(user_input, api_key=""):
     for tk, name in STOCK_NAME_DICT.items():
         if t == name.upper() or t in name.upper(): return resolve_suffix(tk), name
 
-    ticker_result = ""
-    name_result = t
+    ticker_result, name_result = "", t
     if api_key:
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash")
-            prompt = f"你是一個專業的台灣股市系統。使用者輸入：「{t}」。請輸出對應的「代碼(純數字)+後綴」以及「中文簡稱」，用逗號分隔。若找不到請輸出「無」。絕對不允許輸出其他文字或思考過程。"
-            res = model.generate_content(prompt).text.strip().upper()
+            res = model.generate_content(f"台灣股市系統。輸入：「{t}」。輸出「代碼(純數字)+後綴」及「中文簡稱」，逗號分隔。找不到輸出「無」。").text.strip().upper()
             if res != "無" and "," in res:
-                parts = res.split(',')
-                ticker_result = parts[0].strip()
-                name_result = parts[1].strip()
+                ticker_result, name_result = res.split(',')[0].strip(), res.split(',')[1].strip()
         except: pass
             
     if ticker_result:
@@ -154,20 +143,12 @@ def smart_resolve_ticker(user_input, api_key=""):
         if valid_tk: return valid_tk, name_result
 
     try:
-        url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
-        r = requests.get(url, headers=yf_session.headers, timeout=3)
-        if r.status_code == 200:
-            quotes = r.json().get('quotes', [])
-            if quotes:
-                sym = quotes[0].get('symbol', '').upper()
-                shortname = quotes[0].get('shortname', clean_t)
-                return sym, shortname
+        r = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW", headers=yf_session.headers, timeout=3)
+        if r.status_code == 200 and r.json().get('quotes'):
+            return r.json()['quotes'][0].get('symbol', '').upper(), r.json()['quotes'][0].get('shortname', clean_t)
     except: pass
     
-    if re.match(r'^[A-Z0-9]+$', clean_t):
-        valid_tk = resolve_suffix(clean_t)
-        if valid_tk: return valid_tk, clean_t
-        
+    if re.match(r'^[A-Z0-9]+$', clean_t): return resolve_suffix(clean_t), clean_t
     return "", ""
 
 def get_leverage(ticker):
@@ -177,11 +158,8 @@ def get_leverage(ticker):
     if t.endswith("R.TW") or t.endswith("R.TWO"): return -1.0
     us_3x = ["TQQQ", "SOXL", "UPRO", "UDOW", "TMF", "FAS", "TECL", "CURE", "NAIL", "YINN", "WEBL", "DPST", "FNGU"]
     us_2x = ["QLD", "SSO", "USD", "UWM", "MVV", "NVDL", "TSLL"]
-    us_n3x = ["SQQQ", "SOXS", "SPXU", "SDOW", "TMV", "FAZ", "TECS", "WEBS", "FNGD"]
-    base = t.split('.')[0]
-    if base in us_3x: return 3.0
-    if base in us_2x: return 2.0
-    if base in us_n3x: return -3.0
+    if t.split('.')[0] in us_3x: return 3.0
+    if t.split('.')[0] in us_2x: return 2.0
     return 1.0
 
 # ==========================================
@@ -192,26 +170,17 @@ def fetch_market_data(ticker):
         return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0, "rsi": 50.0, "kd_k": 50.0, "history_close": pd.Series(dtype=float)}
     try:
         t_obj = yf.Ticker(ticker, session=yf_session)
-        try: realtime_price = float(t_obj.fast_info.get('lastPrice', 0) or 0)
-        except: realtime_price = 0.0
-
+        realtime_price = float(t_obj.fast_info.get('lastPrice', 0) or 0)
         df = yf.download(ticker, period="1y", progress=False, session=yf_session)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             df.dropna(subset=['Close'], inplace=True)
-            
-            closes = df['Close']
-            highs = df['High']
-            lows = df['Low']
+            closes, highs, lows = df['Close'], df['High'], df['Low']
             
             if not closes.empty: 
-                hist_last_price = float(closes.iloc[-1] or 0)
-                date_str = closes.index[-1].strftime("%Y-%m-%d")
-                price = realtime_price if realtime_price > 0 else hist_last_price
-                if realtime_price > 0: date_str = "最新即時報價"
-                
-                high52w = float(highs.max() or price)
-                if price > high52w: high52w = price 
+                price = realtime_price if realtime_price > 0 else float(closes.iloc[-1] or 0)
+                date_str = "最新即時報價" if realtime_price > 0 else closes.index[-1].strftime("%Y-%m-%d")
+                high52w = max(float(highs.max()), price)
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1] or price) if len(closes) >= 200 else price
                 drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
                 bias = ((price - ma200) / ma200) * 100 if ma200 > 0 else 0.0
@@ -223,35 +192,31 @@ def fetch_market_data(ticker):
                 rsi_series = 100 - (100 / (1 + rs))
                 current_rsi = float(rsi_series.dropna().iloc[-1]) if not rsi_series.dropna().empty else 50.0
                 
-                roll_low = lows.rolling(window=9).min()
-                roll_high = highs.rolling(window=9).max()
+                roll_low, roll_high = lows.rolling(window=9).min(), highs.rolling(window=9).max()
                 rsv = (closes - roll_low) / (roll_high - roll_low) * 100
-                k_series = rsv.ewm(com=2, adjust=False).mean()
-                current_k = float(k_series.dropna().iloc[-1]) if not k_series.dropna().empty else 50.0
+                current_k = float(rsv.ewm(com=2, adjust=False).mean().dropna().iloc[-1]) if not rsv.dropna().empty else 50.0
 
                 return {
-                    "price": price, "date": date_str, "ma200": ma200, 
-                    "high52w": high52w, "drawdown": drawdown, "bias": bias,
-                    "rsi": current_rsi, "kd_k": current_k, "history_close": closes
+                    "price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, 
+                    "bias": bias, "rsi": current_rsi, "kd_k": current_k, "history_close": closes
                 }
-    except: return None
+    except: pass
     return None
 
 def load_portfolio():
     default_data = {
+        "global_goals": {"target_amt": 20000000, "target_years": 10},
         "schemes": {
-            "🎯 台股主力配置": {"market": "TW", "assets": [], "goals": {"target_amt": 10000000, "target_years": 10}},
-            "🎯 美股主力配置": {"market": "US", "assets": [], "goals": {"target_amt": 300000, "target_years": 10}}
+            "🎯 台股主力配置": {"market": "TW", "assets": []},
+            "🎯 美股主力配置": {"market": "US", "assets": []}
         }
     }
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
-                if "schemes" in data:
-                    for s in data["schemes"].values():
-                        if "goals" not in s: s["goals"] = {"target_amt": 10000000 if s["market"]=="TW" else 300000, "target_years": 10}
-                    return data
+                if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
+                if "schemes" in data: return data
         except: pass
     return default_data
 
@@ -259,6 +224,28 @@ def save_portfolio(data):
     with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
 db_data = load_portfolio()
+
+# 💡 聚合相同標的模組 (核心修復 Req 1: 分批建倉合併)
+def aggregate_assets(assets):
+    agg = {}
+    for a in assets:
+        tk = a["ticker"]
+        if tk not in agg:
+            agg[tk] = {"ticker": tk, "init_shares": 0.0, "target_pct": 0.0, "total_cost": 0.0, "leverage": a.get("leverage", 1.0), "is_tw": a.get("is_tw", True)}
+        shares = float(a.get("init_shares", 0))
+        price = float(a.get("buy_price", 0))
+        agg[tk]["init_shares"] += shares
+        agg[tk]["target_pct"] += float(a.get("target_pct", 0))
+        if tk == "CASH": agg[tk]["total_cost"] += shares
+        else: agg[tk]["total_cost"] += shares * price
+    
+    res = []
+    for tk, v in agg.items():
+        if v["init_shares"] > 0:
+            v["buy_price"] = 1.0 if tk == "CASH" else (v["total_cost"] / v["init_shares"])
+        else: v["buy_price"] = 0.0
+        res.append(v)
+    return res
 
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
@@ -277,9 +264,9 @@ elif current_vix >= 20: vix_color, vix_status = "#f59e0b", "波動加劇"
 else: vix_color, vix_status = "#64748b", "市場穩定"
 
 st.sidebar.markdown(f"""
-<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {vix_color}; border-radius:6px; margin-bottom:12px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px;'>📉 VIX 恐慌指數</div>
-    <div style='color:#0f172a; font-size:1.3rem; font-weight:900;'>{current_vix:.2f} <span style='font-size:0.85rem; color:{vix_color}; font-weight:700;'>{vix_status}</span></div>
+<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {vix_color}; border-radius:6px; margin-bottom:10px;'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>📉 VIX 恐慌指數</div>
+    <div style='color:#0f172a; font-size:1.2rem; font-weight:900;'>{current_vix:.2f} <span style='font-size:0.85rem; color:{vix_color}; font-weight:700;'>{vix_status}</span></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -290,30 +277,180 @@ elif cnn_val <= 30: cnn_color, cnn_status = "#10b981", "恐懼 (找買點)"
 else: cnn_color, cnn_status = "#64748b", "市場中立"
 
 st.sidebar.markdown(f"""
-<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {cnn_color}; border-radius:6px; margin-bottom:12px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px;'>🦅 CNN 恐懼與貪婪</div>
-    <div style='color:#0f172a; font-size:1.3rem; font-weight:900;'>{cnn_val} <span style='font-size:0.85rem; color:{cnn_color}; font-weight:700;'>{cnn_status}</span></div>
+<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {cnn_color}; border-radius:6px; margin-bottom:10px;'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>🦅 CNN 恐懼與貪婪</div>
+    <div style='color:#0f172a; font-size:1.2rem; font-weight:900;'>{cnn_val} <span style='font-size:0.85rem; color:{cnn_color}; font-weight:700;'>{cnn_status}</span></div>
 </div>
 """, unsafe_allow_html=True)
 
 tw_light_signal = "🟢 綠燈 (31分)"  
-tw_light_color = "#10b981"  
 st.sidebar.markdown(f"""
-<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {tw_light_color}; border-radius:6px; margin-bottom:12px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px;'>🚦 景氣對策信號 (台股)</div>
-    <div style='color:#0f172a; font-size:1.1rem; font-weight:900;'>{tw_light_signal}</div>
-    <div style='color:#94a3b8; font-size:0.75rem; font-weight:600; margin-top:4px;'>💡 戰略: 藍燈建倉、紅燈調節</div>
+<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #10b981; border-radius:6px; margin-bottom:10px;'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>🚦 景氣對策信號 (台股)</div>
+    <div style='color:#0f172a; font-size:1.0rem; font-weight:900;'>{tw_light_signal}</div>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.markdown("---")
 
 api_key = MY_API_KEY
 if api_key: genai.configure(api_key=api_key)
 
-app_mode = st.sidebar.radio("模組導覽 (Modules)：", ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理", "🔍 全球市場量化終端"])
+st.sidebar.markdown("---")
+app_mode = st.sidebar.radio("模組導覽 (Modules)：", ["🏠 總體財富總覽", "🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理", "🔍 全球市場量化終端"])
 st.sidebar.markdown("---")
 
+# 💡 左側邊欄：分批建倉明細 (Req 2)
 if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理"]:
+    current_scheme_name = "🎯 台股主力配置" if "台股" in app_mode else "🎯 美股主力配置"
+    raw_assets = db_data["schemes"][current_scheme_name]["assets"]
+    st.sidebar.markdown("### 📜 分批建倉明細 (Trade Lots)")
+    if raw_assets:
+        df_lots = pd.DataFrame(raw_assets)
+        df_lots['ticker'] = df_lots['ticker'].apply(lambda x: x.split('.')[0])
+        df_lots = df_lots[['ticker', 'init_shares', 'buy_price', 'buy_date']]
+        df_lots.columns = ['標的', '數量', '買價', '日期']
+        st.sidebar.dataframe(df_lots, use_container_width=True, hide_index=True)
+    else:
+        st.sidebar.info("尚無建倉紀錄")
+
+# ==========================================
+# 5. 主功能：總體財富總覽 (Dashboard - Req 3 & 4)
+# ==========================================
+if app_mode == "🏠 總體財富總覽":
+    st.markdown("<h1>🏠 總體財富總覽 (Wealth Dashboard)</h1>", unsafe_allow_html=True)
+    
+    with st.expander("🎯 設定全球財務自由目標 (Global Financial Goals)"):
+        g_cols = st.columns(2)
+        cur_target_amt = db_data["global_goals"]["target_amt"]
+        cur_target_years = db_data["global_goals"]["target_years"]
+        goal_amt = g_cols[0].number_input("設定總目標資產 (NTD)", min_value=0, value=int(cur_target_amt), step=100000)
+        goal_yrs = g_cols[1].number_input("預估達成年數 (Years)", min_value=1, value=int(cur_target_years), step=1)
+        if st.button("儲存總目標"):
+            db_data["global_goals"] = {"target_amt": goal_amt, "target_years": goal_yrs}
+            save_portfolio(db_data)
+            st.success("目標儲存成功！")
+            st.rerun()
+
+    total_aum_ntd = 0
+    total_cost_ntd = 0
+    total_div_ntd = 0
+    combined_hist_df = pd.DataFrame()
+    cash_total_ntd = 0
+
+    with st.spinner("🔄 正在聚合全球資產與歷史軌跡..."):
+        for scheme_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
+            is_tw = "台股" in scheme_name
+            raw_assets = db_data["schemes"][scheme_name]["assets"]
+            agg_assets = aggregate_assets(raw_assets)
+            
+            for asset in agg_assets:
+                m_data = fetch_market_data(asset["ticker"])
+                if m_data and m_data["price"] > 0:
+                    now_p = m_data["price"]
+                    rate = 1.0 if is_tw else current_rate
+                    
+                    if asset["ticker"] == "CASH": 
+                        now_val_ntd = asset.get("init_shares", 0) * rate
+                        asset_cost_ntd = now_val_ntd
+                        cash_total_ntd += now_val_ntd
+                        yield_pct = 0.0
+                    else: 
+                        now_val_ntd = now_p * rate * asset.get("init_shares", 0)
+                        buy_p = asset.get("buy_price", now_p)
+                        if buy_p == 0: buy_p = now_p
+                        asset_cost_ntd = buy_p * rate * asset.get("init_shares", 0)
+                        try: yield_pct = float(yf.Ticker(asset["ticker"], session=yf_session).info.get('dividendYield', 0) or 0)
+                        except: yield_pct = 0.0
+                        
+                        hist_series = m_data.get("history_close")
+                        if not hist_series.empty and not asset["ticker"].startswith("^"):
+                            val_series = hist_series * asset.get("init_shares", 0) * rate
+                            if combined_hist_df.empty: combined_hist_df = val_series.to_frame(name=asset["ticker"])
+                            else:
+                                if asset["ticker"] in combined_hist_df.columns: combined_hist_df[asset["ticker"]] = combined_hist_df[asset["ticker"]].add(val_series, fill_value=0)
+                                else: combined_hist_df = combined_hist_df.join(val_series.rename(asset["ticker"]), how='outer')
+
+                    total_aum_ntd += now_val_ntd
+                    total_cost_ntd += asset_cost_ntd
+                    total_div_ntd += (now_val_ntd * yield_pct)
+
+    if not combined_hist_df.empty:
+        combined_hist_df = combined_hist_df.ffill()
+        combined_hist_df['Total'] = combined_hist_df.sum(axis=1) + cash_total_ntd
+        
+        ytd_date = str(datetime.datetime.now().year) + "-01-01"
+        try: val_ytd = combined_hist_df['Total'].loc[ytd_date:].iloc[0]
+        except: val_ytd = combined_hist_df['Total'].iloc[0]
+        val_1y = combined_hist_df['Total'].iloc[0]
+        val_now = combined_hist_df['Total'].iloc[-1]
+        
+        return_ytd = ((val_now / val_ytd) - 1) * 100 if val_ytd > 0 else 0
+        return_1y = ((val_now / val_1y) - 1) * 100 if val_1y > 0 else 0
+    else:
+        return_ytd, return_1y = 0.0, 0.0
+
+    target_amount = db_data["global_goals"]["target_amt"]
+    target_years = db_data["global_goals"]["target_years"]
+    shortfall = max(0, target_amount - total_aum_ntd)
+    req_cagr = ((target_amount / total_aum_ntd) ** (1 / max(1, target_years)) - 1) * 100 if total_aum_ntd > 0 and target_amount > total_aum_ntd else 0.0
+    cumulative_ret = ((total_aum_ntd / total_cost_ntd) - 1) * 100 if total_cost_ntd > 0 else 0.0
+
+    st.markdown("### 🎯 總體財務自由目標與績效")
+    g1, g2, g3, g4 = st.columns(4)
+    g1.markdown(f"<div class='kpi-card' style='border-left: 5px solid #8b5cf6;'><div class='data-label'>設定目標金額 ({target_years}年)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(target_amount)}</div></div>", unsafe_allow_html=True)
+    g2.markdown(f"<div class='kpi-card' style='border-left: 5px solid #ef4444;'><div class='data-label'>目前資金缺口 (Shortfall)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
+    g3.markdown(f"<div class='kpi-card' style='border-left: 5px solid #10b981;'><div class='data-label'>需達成年化報酬率 (Req. CAGR)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-left: 5px solid #3b82f6;'><div class='data-label'>真實累積報酬率 (Cum. Return)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("### 📊 全球資產概況 (Global AUM)")
+    avg_div_rate = (total_div_ntd / total_aum_ntd * 100) if total_aum_ntd > 0 else 0
+    
+    kpi_html = f"""
+    <div style='display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;'>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #3b82f6;'>
+            <div class='data-label'>總投資市值 (Total AUM)</div>
+            <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_aum_ntd)}</div>
+        </div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #10b981;'>
+            <div class='data-label'>今年報酬率 (YTD Return)</div>
+            <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_ytd >=0 else "#ef4444"};'>{return_ytd:+.2f}%</div>
+        </div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #f59e0b;'>
+            <div class='data-label'>近一年報酬 (1-Year TWR)</div>
+            <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_1y >=0 else "#ef4444"};'>{return_1y:+.2f}%</div>
+        </div>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #06b6d4;'>
+            <div class='data-label'>預估年被動收入 (Est. Div)</div>
+            <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_div_ntd)}</div>
+        </div>
+    </div>
+    """
+    st.markdown(kpi_html, unsafe_allow_html=True)
+    
+    if not combined_hist_df.empty:
+        st.markdown(f'<div class="market-header global-market">📈 全球資產歷史走勢模擬 (Global Equity Curve)</div>', unsafe_allow_html=True)
+        chart_period = st.radio("線圖週期：", ["日線 (Daily)", "週線 (Weekly)", "月線 (Monthly)"], horizontal=True)
+        
+        chart_df = combined_hist_df[['Total']].copy()
+        if chart_period == "週線 (Weekly)": chart_df = chart_df.resample('W').last()
+        elif chart_period == "月線 (Monthly)": chart_df = chart_df.resample('ME').last()
+        
+        if privacy_mode:
+            chart_df['Total'] = (chart_df['Total'] / chart_df['Total'].iloc[0] - 1) * 100
+            y_title = "全球資產成長率 (%)"
+        else: y_title = "總市值 (NTD)"
+
+        fig_eq = px.line(chart_df, x=chart_df.index, y='Total', template="plotly_white")
+        fig_eq.update_traces(line=dict(color='#8b5cf6', width=2), fill='tozeroy', fillcolor='rgba(139, 92, 246, 0.1)')
+        if privacy_mode: fig_eq.update_layout(yaxis=dict(showticklabels=True, tickformat=".1f"))
+        else: fig_eq.update_layout(yaxis=dict(showticklabels=True))
+        fig_eq.update_layout(height=400, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_title, xaxis_title="")
+        st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False})
+
+# ==========================================
+# 5. 主功能：個別量化部位管理 (TW / US)
+# ==========================================
+elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理"]:
     is_tw_mode = (app_mode == "🇹🇼 台股量化部位管理")
     market_label = "台股" if is_tw_mode else "美股"
     current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
@@ -323,29 +460,10 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
     current_assets_len = len(db_data["schemes"][current_scheme_name]["assets"])
     num_assets = st.sidebar.number_input("🔢 部位清單展開數", value=max(3, current_assets_len), min_value=1)
 
-# ==========================================
-# 5. 主功能：動態持股監控與財富目標
-# ==========================================
-if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理"]:
-    st.markdown(f'<h1>💼 {market_label} 財富管理終端 (Wealth Management)</h1>', unsafe_allow_html=True)
-    
-    with st.expander(f"🎯 設定財務自由目標 (Financial Goals)"):
-        g_cols = st.columns(2)
-        cur_target_amt = db_data["schemes"][current_scheme_name]["goals"]["target_amt"]
-        cur_target_years = db_data["schemes"][current_scheme_name]["goals"]["target_years"]
-        
-        goal_amt = g_cols[0].number_input(f"設定目標總資產 ({currency_symbol})", min_value=0, value=int(cur_target_amt), step=10000)
-        goal_yrs = g_cols[1].number_input("預計達成年數 (Years)", min_value=1, value=int(cur_target_years), step=1)
-        
-        if st.button("儲存目標設定"):
-            db_data["schemes"][current_scheme_name]["goals"] = {"target_amt": goal_amt, "target_years": goal_yrs}
-            save_portfolio(db_data)
-            st.success("目標儲存成功！")
-            st.rerun()
+    st.markdown(f'<h1>💼 {market_label} 量化部位管理 (Portfolio Management)</h1>', unsafe_allow_html=True)
 
     with st.expander(f"⚙️ 點此編輯交易日誌與庫存戰略", expanded=(not db_data["schemes"][current_scheme_name]["assets"])):
         st.info(f"💡 提示：支援分批買進！即便輸入相同代碼，系統也會自動加總計算歷史市值。")
-        
         cols = st.columns([1.5, 1.5, 1.2, 1.2, 1.2])
         cols[0].markdown("**代碼 或 名稱**")
         cols[1].markdown("**持有數量 (現金填金額)**")
@@ -396,14 +514,13 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
 
     current_view_data = []
     local_total_val, local_total_exp = 0, 0
-    local_total_dividend = 0
     local_total_cost = 0
-    portfolio_history_df = pd.DataFrame()
     
-    target_portfolio = db_data["schemes"][current_scheme_name]["assets"]
+    # 💡 呼叫聚合函數，將分批建倉合併為單一標的卡片
+    target_portfolio = aggregate_assets(db_data["schemes"][current_scheme_name]["assets"])
     
     if target_portfolio:
-        with st.spinner(f"🔄 正在同步雲端報價、量化指標與歷史回測軌跡..."):
+        with st.spinner(f"🔄 正在同步雲端報價與量化指標..."):
             for asset in target_portfolio:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
@@ -411,10 +528,7 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                     date_str = m_data["date"]
                     lev = asset.get("leverage", 1.0)
                     
-                    if asset["ticker"].startswith("^"): 
-                        now_val_ntd = asset.get("init_shares", 0) * (now_p / asset.get("init_price", now_p))
-                        asset_cost = asset.get("init_shares", 0)
-                    elif asset["ticker"] == "CASH": 
+                    if asset["ticker"] == "CASH": 
                         now_val_ntd = asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                         asset_cost = now_val_ntd
                     else: 
@@ -428,116 +542,11 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                     local_total_exp += exposure_ntd
                     local_total_cost += asset_cost
                     
-                    try:
-                        if asset["ticker"] != "CASH" and not asset["ticker"].startswith("^"):
-                            yield_pct = float(yf.Ticker(asset["ticker"], session=yf_session).info.get('dividendYield', 0) or 0)
-                        else: yield_pct = 0.0
-                    except: yield_pct = 0.0
-                        
-                    local_total_dividend += (now_val_ntd * yield_pct)
-                    
-                    # 💡 完美修復同股加總重名錯誤 (Auto-summing duplicate tickers)
-                    hist_series = m_data.get("history_close")
-                    if not hist_series.empty and asset["ticker"] != "CASH" and not asset["ticker"].startswith("^"):
-                        val_series = hist_series * asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
-                        if portfolio_history_df.empty:
-                            portfolio_history_df = val_series.to_frame(name=asset["ticker"])
-                        else:
-                            if asset["ticker"] in portfolio_history_df.columns:
-                                portfolio_history_df[asset["ticker"]] = portfolio_history_df[asset["ticker"]].add(val_series, fill_value=0)
-                            else:
-                                portfolio_history_df = portfolio_history_df.join(val_series.rename(asset["ticker"]), how='outer')
-
                     current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "asset_cost": asset_cost, "exposure_ntd": exposure_ntd, 
                                               "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"],
                                               "rsi": m_data["rsi"], "kd_k": m_data["kd_k"]})
 
-        # 修復 Pandas 2.1+ ffill 語法錯誤
-        if not portfolio_history_df.empty:
-            portfolio_history_df = portfolio_history_df.ffill()
-            portfolio_history_df['Total'] = portfolio_history_df.sum(axis=1)
-            cash_val = sum([item.get("init_shares",0) * (1.0 if is_tw_mode else current_rate) for item in target_portfolio if item["ticker"] == "CASH"])
-            portfolio_history_df['Total'] += cash_val
-            
-            ytd_date = str(datetime.datetime.now().year) + "-01-01"
-            try: val_ytd = portfolio_history_df['Total'].loc[ytd_date:].iloc[0]
-            except: val_ytd = portfolio_history_df['Total'].iloc[0]
-            
-            val_1y = portfolio_history_df['Total'].iloc[0]
-            val_now = portfolio_history_df['Total'].iloc[-1]
-            
-            return_ytd = ((val_now / val_ytd) - 1) * 100 if val_ytd > 0 else 0
-            return_1y = ((val_now / val_1y) - 1) * 100 if val_1y > 0 else 0
-        else:
-            return_ytd, return_1y = 0.0, 0.0
-
         if current_view_data:
-            target_amount = db_data["schemes"][current_scheme_name]["goals"]["target_amt"]
-            target_years = db_data["schemes"][current_scheme_name]["goals"]["target_years"]
-            shortfall = max(0, target_amount - local_total_val)
-            
-            if local_total_val > 0 and target_amount > local_total_val:
-                req_cagr = ((target_amount / local_total_val) ** (1 / max(1, target_years)) - 1) * 100
-            else:
-                req_cagr = 0.0
-
-            cumulative_ret = ((local_total_val / local_total_cost) - 1) * 100 if local_total_cost > 0 else 0.0
-
-            st.markdown("### 🎯 財務自由目標與績效 (Goals & Returns)")
-            g1, g2, g3, g4 = st.columns(4)
-            g1.markdown(f"<div class='kpi-card' style='border-left: 5px solid #8b5cf6;'><div class='data-label'>設定目標金額 ({target_years}年)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{currency_symbol} {fmt_money(target_amount)}</div></div>", unsafe_allow_html=True)
-            g2.markdown(f"<div class='kpi-card' style='border-left: 5px solid #ef4444;'><div class='data-label'>目前資金缺口 (Shortfall)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{currency_symbol} {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
-            g3.markdown(f"<div class='kpi-card' style='border-left: 5px solid #10b981;'><div class='data-label'>需達成年化報酬率 (Req. CAGR)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
-            g4.markdown(f"<div class='kpi-card' style='border-left: 5px solid #3b82f6;'><div class='data-label'>真實累積報酬率 (Cum. Return)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("### 📊 總體資產概況 (Portfolio Overview)")
-            avg_div_rate = (local_total_dividend / local_total_val * 100) if local_total_val > 0 else 0
-            kpi_html = f"""
-            <div style='display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;'>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #3b82f6;'>
-                    <div class='data-label'>總投資市值 (Total AUM)</div>
-                    <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(local_total_val)}</div>
-                </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #10b981;'>
-                    <div class='data-label'>今年報酬率 (YTD Return)</div>
-                    <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_ytd >=0 else "#ef4444"};'>{return_ytd:+.2f}%</div>
-                </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #f59e0b;'>
-                    <div class='data-label'>近一年報酬 (1-Year TWR)</div>
-                    <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_1y >=0 else "#ef4444"};'>{return_1y:+.2f}%</div>
-                </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #06b6d4;'>
-                    <div class='data-label'>預估年被動收入 (Est. Div)</div>
-                    <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(local_total_dividend)}</div>
-                </div>
-            </div>
-            """
-            st.markdown(kpi_html, unsafe_allow_html=True)
-            
-            if not portfolio_history_df.empty:
-                st.markdown("#### 📈 資產歷史走勢模擬 (Equity Curve)")
-                chart_period = st.radio("線圖週期：", ["日線 (Daily)", "週線 (Weekly)", "月線 (Monthly)"], horizontal=True)
-                
-                chart_df = portfolio_history_df[['Total']].copy()
-                if chart_period == "週線 (Weekly)": chart_df = chart_df.resample('W').last()
-                elif chart_period == "月線 (Monthly)": chart_df = chart_df.resample('ME').last()
-                
-                if privacy_mode:
-                    chart_df['Total'] = (chart_df['Total'] / chart_df['Total'].iloc[0] - 1) * 100
-                    y_title = "資產成長率 (%)"
-                else:
-                    y_title = "總市值 (NTD)"
-
-                fig_eq = px.line(chart_df, x=chart_df.index, y='Total', template="plotly_white")
-                fig_eq.update_traces(line=dict(color='#2563eb', width=2), fill='tozeroy', fillcolor='rgba(37, 99, 235, 0.1)')
-                if privacy_mode:
-                     fig_eq.update_layout(yaxis=dict(showticklabels=True, tickformat=".1f"))
-                else:
-                     fig_eq.update_layout(yaxis=dict(showticklabels=True))
-                fig_eq.update_layout(height=350, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_title, xaxis_title="")
-                st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False})
-            
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">動態量化監控盤 (Live Monitoring)</div>', unsafe_allow_html=True)
             
             for item in current_view_data:
@@ -548,8 +557,7 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                 diff_val = target_val - item["now_val_ntd"]
                 
                 _, zh_name = smart_resolve_ticker(item["ticker"], api_key)
-                if not zh_name or zh_name == item["ticker"]: 
-                    zh_name = STOCK_NAME_DICT.get(item["ticker"].split('.')[0], item["ticker"])
+                if not zh_name or zh_name == item["ticker"]: zh_name = STOCK_NAME_DICT.get(item["ticker"].split('.')[0], item["ticker"])
                 
                 box_bg = "#f8fafc" if abs(diff) <= threshold else "#fffbeb"
                 box_border = "#e2e8f0" if abs(diff) <= threshold else "#fde68a"
@@ -565,25 +573,22 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                 
                 if item["ticker"] == "CASH":
                     c[0].markdown(f"<div class='ticker-display'>💵 現金</div><div class='stock-name-display'>台/外幣保留款</div><div class='price-display'>TWD/USD</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>持有金額:</div><div class='data-value'>{fmt_money(item.get('init_shares', 0))}</div><div class='data-label' style='margin-top:10px;'>真實市值:</div><div class='data-value'>NTD {fmt_money(item['now_val_ntd'])}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>持有總額:</div><div class='data-value'>{fmt_money(item.get('init_shares', 0))}</div><div class='data-label' style='margin-top:10px;'>真實市值:</div><div class='data-value'>NTD {fmt_money(item['now_val_ntd'])}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>資產佔比監控:</div>{progress_html}", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>避險資產</div><div class='data-label' style='margin-top:10px;'>回撤率:</div><div class='data-value' style='color:#94a3b8;'>0.0%</div>", unsafe_allow_html=True)
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:#94a3b8;'>---</div><div class='data-label' style='margin-top:10px;'>🧠 戰術建議:</div><div class='data-value' style='color:#64748b;'>資金水庫</div>", unsafe_allow_html=True)
-                    
                     unit = "元" if is_tw_mode else "美元"
                     diff_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                     if diff_amt > 0: action_msg = f"<div class='badge-buy'>ADD 存入</div> <span style='font-weight:800; font-size:1.2rem; color:#0f172a; margin-left:8px;'>{fmt_money(diff_amt)} {unit}</span>"
                     elif diff_amt < 0: action_msg = f"<div class='badge-sell'>SUB 提領</div> <span style='font-weight:800; font-size:1.2rem; color:#0f172a; margin-left:8px;'>{fmt_money(abs(diff_amt))} {unit}</span>"
                     else: action_msg = f"<div class='badge-hold'>無需調整</div>"
-                
                 else:
                     clean_name = item["ticker"].split('.')[0]
                     pnl_pct = ((item["now_val_ntd"] / item["asset_cost"]) - 1) * 100 if item["asset_cost"] > 0 else 0
                     pnl_color = "#10b981" if pnl_pct >= 0 else "#ef4444"
-                    buy_date_str = f" ({item.get('buy_date')})" if item.get("buy_date") else ""
                     
-                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>均價: {item.get('buy_price',0):.2f}{buy_date_str}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有數量:'}</div><div class='data-value'>{fmt_money(item.get('init_shares', 0))} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:10px;'>真實市值:</div><div class='data-value'>NTD {fmt_money(item['now_val_ntd'])} <span style='font-size:0.85rem; color:{pnl_color};'>({pnl_pct:+.1f}%)</span></div>", unsafe_allow_html=True)
+                    c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>平均成本: {item.get('buy_price',0):.2f}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>總持有數量:</div><div class='data-value'>{fmt_money(item.get('init_shares', 0))} 股</div><div class='data-label' style='margin-top:10px;'>真實市值:</div><div class='data-value'>NTD {fmt_money(item['now_val_ntd'])} <span style='font-size:0.85rem; color:{pnl_color};'>({pnl_pct:+.1f}%)</span></div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>資產佔比監控:</div>{progress_html}", unsafe_allow_html=True)
                     
                     is_bear = item['now_p'] < item['ma200']
@@ -619,35 +624,9 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                 c[5].markdown(action_html, unsafe_allow_html=True)
                 st.markdown("<hr style='margin: 1rem 0; border-color: #f1f5f9;'>", unsafe_allow_html=True)
 
-        st.markdown("### 💰 新資金量化佈局 (Capital Injection)")
-        add_cash = st.number_input("打算額外投入的總資金 (NTD) [單位: 元]", min_value=0, value=0, step=10000, format="%d")
-        if add_cash > 0:
-            st.markdown("<div class='action-box'>", unsafe_allow_html=True)
-            st.markdown("<h4 style='color:#0f172a; font-weight:800;'>🎯 演算法建議佈局清單：</h4>", unsafe_allow_html=True)
-            ideal_total_val = local_total_val + add_cash
-            buy_list = []
-            for item in current_view_data:
-                ideal_target_ntd = ideal_total_val * (item["target_pct"] / 100.0)
-                shortfall_ntd = ideal_target_ntd - item["now_val_ntd"]
-                if shortfall_ntd > 0:
-                    if item["ticker"] == "CASH":
-                        buy_units = shortfall_ntd / (1.0 if is_tw_mode else current_rate)
-                        buy_list.append(f"💵 **現金保留**：**{fmt_money(buy_units)}** {'元' if is_tw_mode else '美元'}")
-                    elif item["ticker"].startswith("^"): buy_list.append(f"📊 **{item['ticker']}**：建議加碼 **{fmt_money(shortfall_ntd)}** 元")
-                    else:
-                        price_ntd = item["now_p"] if is_tw_mode else (item["now_p"] * current_rate)
-                        shares_to_buy = int(shortfall_ntd / price_ntd) if price_ntd > 0 else 0
-                        clean_name = item["ticker"].split('.')[0]
-                        if shares_to_buy > 0: buy_list.append(f"🛒 **{clean_name}**：買進 **{fmt_money(shares_to_buy)}** 股 (約 NTD {fmt_money(shares_to_buy * price_ntd)})")
-            if buy_list:
-                for b in buy_list: st.markdown(f"- <span style='font-size:1.1rem; color:#1e293b;'>{b}</span>", unsafe_allow_html=True)
-            else: st.write("目前無特定缺口。")
-            st.markdown("</div>", unsafe_allow_html=True)
-
         st.markdown("---")
         st.subheader("🤖 投資組合戰略兵推 (AI 深度解析)")
         st.info("💡 點擊下方按鈕，AI 將綜合您的【權重偏離度】與【各標的技術面 (均線/KD/RSI)】，為您擬定精確的進出單策略。")
-        
         if st.button(f"✨ 啟動 Gemini 首席量化分析", key="manual_portfolio_ai_btn", type="primary", use_container_width=True):
             if not api_key: st.warning("⚠️ 請先在後台 Secrets 中設定 API Key。")
             else:
@@ -663,20 +642,11 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                             f"   - 技術指標：日K值 {item['kd_k']:.1f} / 14期RSI {item['rsi']:.1f} / 乖離率 {item['bias']:+.1f}%\n"
                             f"   - 趨勢與風險：當前價格 {'大於' if item['now_p'] >= item['ma200'] else '小於'} 200日均線 / 距高點回撤 {item['drawdown']:.1f}%\n\n"
                         )
-                    
-                    privacy_instruction = "使用者目前開啟了【隱私防窺模式】，因此你的報告中絕對不可以出現任何真實的金額數字 (如總市值、股數、台幣等)，請一律使用百分比 (%) 或是部位比重來做說明。" if privacy_mode else ""
-
+                    privacy_instruction = "使用者目前開啟了【隱私防窺模式】，報告中絕對不可出現真實金額數字 (如總市值、股數等)，請用百分比來做說明。" if privacy_mode else ""
                     prompt = f"""
-                    你是量化操盤手。請根據數據分析持股進出：
-                    {portfolio_summary}
-                    
-                    請嚴格遵循以下核心邏輯：
-                    1. 槓桿保護優先：對於 2 倍以上槓桿標的，若跌破 200 日均線，必須強烈建議減碼或停損以防範波動內耗。
-                    2. 順勢與逆勢結合：若 KD < 20 或 RSI < 30 (超賣)，建議分批買進；若 KD > 80 (超買) 或乖離率過高，建議分批獲利了結。
-                    3. 再平衡紀律：針對權重偏離目標超過 2% 的標的，明確指示應該賣出超重部位並買進低配部位。
-                    
-                    {privacy_instruction}
-                    
+                    你是量化操盤手。請根據數據分析持股進出：\n{portfolio_summary}\n
+                    請嚴格遵循：1. 跌破200日均線的槓桿標的強烈建議減碼防內耗。2. KD<20或RSI<30建議分批買進；KD>80或乖離率過高建議獲利了結。3. 明確指示賣出超重部位並買進低配部位。\n
+                    {privacy_instruction}\n
                     請提供：1. 總體健檢 2. 個股精確戰術建議 3. 本期再平衡執行指令。用專業繁體中文回覆。
                     """
                     try:
@@ -687,7 +657,7 @@ if app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部�
                         st.info(model.generate_content(prompt).text)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球市場量化終端
 # ==========================================
 elif app_mode == "🔍 全球市場量化終端":
     st.sidebar.header("🌍 大盤快搜 (Indices)")
@@ -701,10 +671,11 @@ elif app_mode == "🔍 全球市場量化終端":
     elif market_choice == "那斯達克 (美股科技)": default_ticker = "^IXIC"
     elif market_choice == "標普 500 (美股大盤)": default_ticker = "^GSPC"
     elif market_choice == "費城半導體": default_ticker = "^SOX"
-    else: default_ticker = "6285"
+    else: default_ticker = ""
     
+    # 💡 更新：移除 6285 預設值 (Req 5)
     if market_choice == "自訂輸入個股": 
-        target_to_parse = st.text_input("輸入欲分析的代碼或股名 (輸入完畢按 Enter)：", value="6285")
+        target_to_parse = st.text_input("輸入欲分析的代碼或股名 (輸入完畢按 Enter)：", value="", placeholder="例如：2330 或 台積電")
     else: 
         target_to_parse = default_ticker
     
@@ -752,9 +723,10 @@ elif app_mode == "🔍 全球市場量化終端":
                         st.markdown("### 📊 量化多維戰情儀表板")
                         cc1, cc2, cc3 = st.columns(3)
                         
+                        # 💡 專業處理大盤單位 (Req 1)
                         if ticker_input.startswith("^"):
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{fmt_money(last_close)} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem;'>回撤率: {dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {fmt_money(high_52w)}</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{last_close:,.2f} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {ma200_val:,.2f}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem;'>回撤率: {dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {high_52w:,.2f} 點</div></div>", unsafe_allow_html=True)
                             pe_str, yd_str, sec_str = "大盤指數", "大盤指數", "大盤指數"
                         else:
                             try:
@@ -798,7 +770,7 @@ elif app_mode == "🔍 全球市場量化終端":
                                         你現在是一位頂級的量化交易分析師。請根據以下最新抓取的數據，提供操作建議：
                                         標的：{clean_title} {zh_name}
                                         K線週期：{k_period}
-                                        最新收盤價：{last_close:.2f}
+                                        最新價位：{last_close:.2f}
                                         關鍵長天期均線 ({n3})：{ma200_val:.2f}
                                         14期 RSI：{rsi_val:.1f} ({rsi_status})
                                         本益比：{pe_str} | 殖利率：{yd_str} | 所屬板塊：{sec_str}
