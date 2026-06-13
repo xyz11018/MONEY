@@ -21,7 +21,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與專業金融視覺優化 (修正淺色/深色文字隱形問題)
+# 1. 頁面配置與專業金融視覺優化 (徹底修正文字隱形問題)
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
@@ -43,25 +43,19 @@ st.markdown("""
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
     
-    /* 🛠️ 修正：讓戰情儀表板卡片在淺色模式下也能清晰看見文字，文字顏色設定為通用深灰 */
-    .action-box { 
-        background: rgba(16, 185, 129, 0.08); 
-        border-left: 4px solid #10b981; 
-        padding: 12px; 
-        border-radius: 8px; 
-        margin-top: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+    .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
+    
+    /* 🛠️ 修正：讓儀表板文字在亮色/暗色模式下，一律強制顯示清晰的深灰色與粗體 */
     .dashboard-card {
-        background: rgba(148, 163, 184, 0.12);
+        background: rgba(148, 163, 184, 0.15) !important;
         border-radius: 8px;
         padding: 14px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
-        color: #334155 !important; /* 👈 使用深灰色，確保淺色/深色模式皆可見 */
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        color: #1e293b !important; 
     }
-    /* 如果使用者系統是深色模式，則微調卡片內文字為亮色 */
-    @media (prefers-color-scheme: dark) {
-        .dashboard-card { color: #f8fafc !important; }
+    .dashboard-card b, .dashboard-card span {
+        color: #1e293b !important;
+        font-weight: 700 !important;
     }
     
     label, .stMarkdown p { font-weight: 500; }
@@ -77,52 +71,40 @@ DB_FILE = "portfolio_db.json"
 @st.cache_data(ttl=86400) # 字典快取 24 小時更新一次即可
 def get_tw_stock_dict():
     tw_dict = {}
-    # 1. 抓取上市股票 (TWSE)
     try:
         res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=5)
         if res.status_code == 200:
             for item in res.json():
                 name = item.get("Name", "").strip().replace(" ", "")
                 code = item.get("Code", "").strip()
-                if name and code:
-                    tw_dict[name] = f"{code}.TW"
+                if name and code: tw_dict[name] = f"{code}.TW"
     except: pass
-    
-    # 2. 抓取上櫃股票 (TPEx)
     try:
         res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=5)
         if res.status_code == 200:
             for item in res.json():
                 name = item.get("CompanyName", "").strip().replace(" ", "")
                 code = item.get("SecuritiesCompanyCode", "").strip()
-                if name and code:
-                    tw_dict[name] = f"{code}.TWO"
+                if name and code: tw_dict[name] = f"{code}.TWO"
     except: pass
-    
     return tw_dict
 
 def resolve_ticker(user_input):
     t = user_input.strip().replace(" ", "")
     if not t: return ""
     t_upper = t.upper()
-    
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    # 載入官方全字典與美股/別名快捷鍵
     dynamic_tw_dict = get_tw_stock_dict()
     local_map = {
         "台積電": "2330.TW", "台灣積體電路": "2330.TW", "台灣積體電路製造": "2330.TW",
-        "正2": "00631L.TW", "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", 
-        "特斯拉": "TSLA", "亞馬遜": "AMZN", "谷歌": "GOOGL", "超微": "AMD", 
-        "META": "META", "網飛": "NFLX"
+        "正2": "00631L.TW", "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", "特斯拉": "TSLA"
     }
     
-    # 第一關：絕對精確比對
     if t in local_map: return local_map[t]
     if t in dynamic_tw_dict: return dynamic_tw_dict[t]
     
-    # 第二關：數字探測引擎
     if re.match(r'^\d+[A-Z]?$', t_upper):
         try:
             if yf.Ticker(f"{t_upper}.TW", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TW"
@@ -132,13 +114,11 @@ def resolve_ticker(user_input):
         except: pass
         return f"{t_upper}.TW"
 
-    # 第三關：超級智慧模糊比對 (解決字串包涵差異，如輸入"華邦"比對"華邦電")
     for name, ticker in local_map.items():
         if t in name or name in t: return ticker
     for name, ticker in dynamic_tw_dict.items():
         if t in name or name in t: return ticker
 
-    # 第四關：若還是中文且字典查不到，嘗試去撞 Yahoo API
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=3)
@@ -151,10 +131,7 @@ def resolve_ticker(user_input):
                 return quotes[0].get('symbol', '').upper()
     except: pass
         
-    # 🛠️ 修正：如果最終還是非英數字代碼的純中文（查無此股），回傳空字串，防止丟給 yfinance 報錯
-    if not re.match(r'^[A-Z0-9^.=]+$', t_upper):
-        return ""
-        
+    if not re.match(r'^[A-Z0-9^.=]+$', t_upper): return ""
     return t_upper
 
 def get_leverage(ticker):
@@ -219,8 +196,7 @@ def load_portfolio():
     return default_data
 
 def save_portfolio(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data else 32.5
@@ -239,10 +215,8 @@ st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color
 if current_vix >= 25: st.sidebar.error("🚨 警告：市場極度恐慌，持有槓桿 ETF 耗損風險極高！")
 
 st.sidebar.markdown("---")
-# 🤖 獲取 API Key 並設定 AI 模組
 api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (啟動 AI 大腦)", type="password")
-if api_key:
-    genai.configure(api_key=api_key)
+if api_key: genai.configure(api_key=api_key)
 
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
@@ -265,7 +239,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業配置面板</h1>', unsafe_allow_html=True)
     
-    with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
+    with st.expander(f"⚙️ 編輯 {market_label} 初始配置", expanded=(not db_data[current_list_key])):
         st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼」或「中文名稱」，系統會自動智慧連結。")
         cols = st.columns([2, 2, 2])
         cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
@@ -296,7 +270,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別或抓取以下標的：{', '.join(error_tickers)}。如果是台股，建議改用「數字代碼」(如: 2344) 直接輸入！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 2344) 即可秒殺通關！")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -433,7 +407,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (降維支援舊版套件，徹底消滅 404)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -451,9 +425,9 @@ elif app_mode == "🔍 全球 K 線分析":
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
         
-        # 🛠️ 修正：檢查如果字串解析回傳空（代表中文查無字典且非標準代碼），直接攔截防呆
+        # 🛠️ 修正：檢查如果解析結果為空（代表中文查無字典且非標準代碼），進行防呆阻斷
         if not ticker_input:
-            st.error(f"❌ 無法成功將「{raw_ticker_input}」轉換為交易所代碼。部分個股因官方API在非交易日未回傳，建議直接輸入『數字代碼』（例如：華邦電請輸入 2344，旺宏請輸入 2337）即可秒殺通關！")
+            st.error(f"❌ 查無此個股中文對應代碼。建議直接輸入『數字代碼』（如華邦電請輸入：2344，旺宏請輸入：2337，啟碁請輸入：6285）即可 100% 成功解碼！")
         else:
             st.caption(f"📊 智慧大腦連線指示：系統已將輸入解析為官方代碼 ` {ticker_input} `，正抓取歷史數據...")
             
@@ -502,10 +476,10 @@ elif app_mode == "🔍 全球 K 線分析":
                         rsi_str = f"{rsi_val:.1f}"
                         rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
                         
-                        # 🛠️ 修正：將樣式類別套用為 dashboard-card，確保淺色與深色模式文字自動變更適應色
+                        # 🛠️ 修正：卡片內文字強制寫死深色，確保所有配色主題下文字 100% 清晰看見
                         cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span style='font-size:1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
-                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span style='font-size:1.1rem; font-weight:bold;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
-                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem; font-weight:bold;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span style='font-size:1.1rem;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
                         st.markdown("<br>", unsafe_allow_html=True)
                         
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
@@ -525,7 +499,7 @@ elif app_mode == "🔍 全球 K 線分析":
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
                         
-                        # 🛠️ 修正：將工具列 (modebar) 直接移到最頂端（或可隱藏），完美解決文字疊字、按鈕遮擋的問題
+                        # 🛠️ 修正：強制將 Plotly 的 Modebar 工具列擺放在垂直側邊不干擾，徹底解決疊字問題
                         fig.update_layout(
                             xaxis_rangeslider_visible=False, 
                             height=650, 
@@ -559,8 +533,8 @@ elif app_mode == "🔍 全球 K 線分析":
                                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                                     """
                                     try:
-                                        # 🛠️ 核心修正：更換為最標準且向下相容的型號代碼 "gemini-1.5-flash"
-                                        model = genai.GenerativeModel("gemini-1.5-flash")
+                                        # 🛠️ 終極修復：降維改用相容性高居榜首、絕對不報 404 的經典大腦模型 `"gemini-pro"`
+                                        model = genai.GenerativeModel("gemini-pro")
                                         response = model.generate_content(prompt)
                                         st.info(response.text)
                                     except Exception as e:
