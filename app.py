@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import os
 import re
+import numpy as np
 
 # ==========================================
 # 1. 頁面配置與專業金融視覺優化
@@ -111,19 +112,6 @@ def fetch_market_data(ticker):
                 
                 return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, "bias": bias}
     except: return None
-    return None
-
-def fetch_realtime_data(ticker):
-    if ticker == "CASH": return 1.0 
-    try: return float(yf.Ticker(ticker).fast_info['lastPrice'])
-    except:
-        try:
-            data = yf.download(ticker, period="5d", progress=False)
-            if not data.empty:
-                if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(0)
-                valid_closes = data['Close'].dropna() 
-                if not valid_closes.empty: return float(valid_closes.iloc[-1])
-        except: return None
     return None
 
 # ==========================================
@@ -251,7 +239,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if current_view_data:
             st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">{"🇹🇼 台灣市場" if is_tw_mode else "🇺🇸 美國市場"} 動態監控盤</div>', unsafe_allow_html=True)
             for item in current_view_data:
-                # 重構版面：加入 BIAS 與戰術指示
                 c = st.columns([1.5, 1.3, 1.2, 1.5, 1.7, 2.8])
                 real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
                 diff = real_pct - item["target_pct"]
@@ -260,7 +247,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
-                # 計算達到目標需調整的量
                 if item["ticker"] == "CASH":
                     adjust_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                     if adjust_amt > 0: action_text = f"需增加: {adjust_amt:,} 單位"
@@ -287,18 +273,15 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         elif adjust_shares < 0: action_text = f"需賣出: {abs(adjust_shares):,} 股"
                         else: action_text = "無需調整"
                         
-                    # 1. 基本數據
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {item['now_p']:.2f}</div><div class='date-display'>{item['date']}</div>", unsafe_allow_html=True)
                     c[1].markdown(f"<div class='data-label'>{'📊 投入金額:' if item['ticker'].startswith('^') else '持有股數:'}</div><div class='data-value'>{int(item.get('init_shares', 0)):,} {'元' if item['ticker'].startswith('^') else '股'}</div><div class='data-label' style='margin-top:4px;'>真實市值:</div><div class='data-value'>NTD {int(item['now_val_ntd']):,}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>目標設定:</div><div class='data-value'>{item['target_pct']}%</div><div class='data-label' style='margin-top:4px;'>槓桿屬性:</div><div class='data-value'>{item.get('leverage', 1.0)}x</div>", unsafe_allow_html=True)
                     
-                    # 2. 趨勢與回撤
                     is_bear = item['now_p'] < item['ma200']
                     trend_tag = "<span style='color:#ef4444; font-weight:700;'>🔴 破線空頭</span>" if is_bear else "<span style='color:#10b981; font-weight:700;'>🟢 多頭格局</span>"
                     dd_color = "#ef4444" if item['drawdown'] < -20 else ("#f59e0b" if item['drawdown'] < -10 else "#f8fafc")
                     c[3].markdown(f"<div class='data-label'>年線 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:4px;'>距高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item['drawdown']:.1f}%</div>", unsafe_allow_html=True)
                     
-                    # 3. 💥 戰術大腦 (BIAS 與 行動指標)
                     bias_color = "#ef4444" if item['bias'] >= 25 else ("#f59e0b" if item['bias'] >= 15 else ("#10b981" if item['bias'] <= -15 else "#f8fafc"))
                     tactical_action = "<span style='color:#94a3b8;'>⚖️ 依原定比例持有</span>"
                     
@@ -315,7 +298,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
-                # 4. 再平衡指示
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
                 else: 
@@ -373,7 +355,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         with footer_cols[1]:
             if current_view_data:
                 st.subheader(f"📊 {market_label} 權重偏差分析")
-                bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/local_total_val*100), "Target": r["target_pct"]} for r in current_view_data])
+                # 解決分母為0的錯誤保護
+                bar_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "Real": (r["now_val_ntd"]/local_total_val*100) if local_total_val > 0 else 0, "Target": r["target_pct"]} for r in current_view_data])
                 fig_bar = go.Figure(data=[
                     go.Bar(name='真實權重 (%)', x=bar_df['tk'], y=bar_df['Real'], marker_color='#00ffcc'),
                     go.Bar(name='設定目標 (%)', x=bar_df['tk'], y=bar_df['Target'], marker_color='#475569')
