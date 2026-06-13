@@ -64,7 +64,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 終極強固解析引擎 (內建本地核心字典)
+# 2. 終極強固解析引擎 (擴充版本地字典)
 # ==========================================
 STOCK_NAME_DICT = {
     "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
@@ -72,6 +72,7 @@ STOCK_NAME_DICT = {
     "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
     "2303": "聯電", "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2609": "陽明",
     "3231": "緯創", "2308": "台達電", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息",
+    "5498": "凱崴", "2356": "英業達", "2324": "仁寶", "3034": "聯詠", "2379": "瑞昱",
     "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
     "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
     "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
@@ -229,7 +230,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            # 💡 已移除 placeholder 字樣
             raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
@@ -364,7 +364,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             
-            # 💡 依要求：僅保留單純的投資市值
             st.metric(f"總投資市值 (NTD)", f"{int(local_total_val):,}")
             
             if current_view_data:
@@ -385,7 +384,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (🧠 已修復閃退重置問題)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -397,13 +396,12 @@ elif app_mode == "🔍 全球 K 線分析":
     elif market_choice == "費城半導體": default_ticker = "^SOX"
     else: default_ticker = "6285"
     
-    # 💡 記憶體狀態鎖定：讓 K 線圖在點擊 AI 診斷後不會被 Streamlit 刷掉
     if "active_kline_ticker" not in st.session_state:
         st.session_state.active_kline_ticker = default_ticker
     
     if market_choice == "自訂輸入個股": 
-        # 已移除 placeholder 字樣
-        raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解，如: 啟碁、中信金 或 6285)：", value=st.session_state.active_kline_ticker)
+        # 💡 已移除輸入框的 placeholder 預設文字
+        raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解)：", value=st.session_state.active_kline_ticker)
         if st.button("🔍 點擊開始解析個股數據", type="primary"):
             st.session_state.active_kline_ticker = raw_ticker_input
     else: 
@@ -418,7 +416,7 @@ elif app_mode == "🔍 全球 K 線分析":
         ticker_input = resolve_ticker(target_to_parse)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。請確認名稱或直接輸入數字代碼。")
+            st.error(f"❌ 查無此標的。由於網路阻擋，若輸入中文失敗，請直接輸入【數字代碼】(例如：凱崴請輸入 5498)。")
         else:
             zh_name = get_stock_name(ticker_input)
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
@@ -504,7 +502,7 @@ elif app_mode == "🔍 全球 K 線分析":
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
     # ==========================================
-    # 🤖 AI 診斷引擎：直連最新 Gemini 3.5 Flash
+    # 🤖 AI 診斷引擎 (內建 429 降檔保護)
     # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
@@ -533,22 +531,32 @@ elif app_mode == "🔍 全球 K 線分析":
                     """
                     
                     try:
+                        # 優先呼叫 3.5 旗艦模型
                         model = genai.GenerativeModel("gemini-3.5-flash")
                         response = model.generate_content(prompt)
                         st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
                         st.info(response.text)
                     except Exception as ai_err:
                         err_str = str(ai_err)
-                        if "404" in err_str:
-                            st.warning("⚠️ 系統偵測到 3.5 模型在您的伺服器區尚未完全開放。正自動為您無縫降級至穩定版 2.5...")
+                        # 💡 攔截 429 速率限制錯誤 (免費額度用完)
+                        if "429" in err_str or "quota" in err_str.lower():
+                            st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度(每分鐘15次)的 2.5 版穩定模型...")
                             try:
                                 fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                 fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！以下是診斷結果：")
+                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
                                 st.info(fallback_response.text)
                             except Exception as fallback_err:
-                                st.error("❌ 連線失敗，請檢查 API 權限或網路狀態。")
-                                st.code(str(fallback_err))
+                                st.error("❌ 連線失敗，可能所有模型的免費額度皆已用盡，請等待 1 分鐘後再試。")
+                        elif "404" in err_str:
+                            st.warning("⚠️ 系統偵測到 3.5 模型尚未完全開放。正自動為您無縫降級至穩定版 2.5...")
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                st.info(fallback_response.text)
+                            except Exception as fallback_err:
+                                st.error("❌ 連線失敗，請檢查 API 權限。")
                         else:
                             st.error(f"❌ 發生未知的連線錯誤：")
                             st.code(err_str)
