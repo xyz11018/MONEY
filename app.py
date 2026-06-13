@@ -13,6 +13,16 @@ import requests
 import google.generativeai as genai
 
 # ==========================================
+# 🔑 終極安全 API Key 讀取機制 (完美相容 GitHub 與 Streamlit Cloud)
+# ==========================================
+try:
+    # 系統會自動去 Streamlit Cloud 後台的 Secrets 抓取密碼
+    MY_API_KEY = st.secrets["GEMINI_API_KEY"]
+except:
+    # 如果找不到密碼，就先留白，讓使用者能在網頁側邊欄手動輸入
+    MY_API_KEY = ""
+
+# ==========================================
 # 0. 核心抗封鎖引擎
 # ==========================================
 yf_session = requests.Session()
@@ -79,7 +89,6 @@ STOCK_NAME_DICT = {
 }
 
 def resolve_suffix(base_tk):
-    """自動補齊後綴並驗證是否存活於 yfinance"""
     if base_tk.endswith('.TW') or base_tk.endswith('.TWO'):
         try:
             if yf.Ticker(base_tk, session=yf_session).fast_info.get('lastPrice'): return base_tk
@@ -100,7 +109,6 @@ def resolve_suffix(base_tk):
     return f"{base_tk}.TW" if base_tk[0].isdigit() else base_tk
 
 def get_yf_chinese_name(query):
-    """備用：從 Yahoo 搜尋抓取名稱"""
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(query)}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=2)
@@ -125,34 +133,28 @@ def smart_resolve_ticker(user_input, api_key=""):
 
     clean_t = t.replace('.TW', '').replace('.TWO', '')
     
-    # 1. 字典極速配對 (依代碼)
     if clean_t in STOCK_NAME_DICT:
         return resolve_suffix(clean_t), STOCK_NAME_DICT[clean_t]
 
-    # 2. 字典極速配對 (依名稱)
     for tk, name in STOCK_NAME_DICT.items():
         if t == name.upper() or t in name.upper():
             return resolve_suffix(tk), name
 
-    # 3. 若為英數字組合 (假設使用者輸入代碼)
     if re.match(r'^[A-Z0-9]+$', clean_t):
         valid_tk = resolve_suffix(clean_t)
         if valid_tk:
             zh_name = get_yf_chinese_name(clean_t)
             return valid_tk, zh_name if zh_name else clean_t
 
-    # 4. 若為純中文 (假設使用者輸入股名) -> AI 終極防幻覺翻譯
     ticker_result = ""
     name_result = t
     if api_key:
         try:
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel("gemini-2.5-flash")
-            # ⛔ 嚴格限制 Prompt，徹底封殺 THINK 思考過程
             prompt = f"你是一個專業的台灣股市系統。使用者輸入了股票名稱：「{t}」。請直接輸出對應的「股票代碼(純數字)」。如果不知道，請輸出「無」。注意：絕對不允許輸出其他文字、標點符號或思考過程。"
             res = model.generate_content(prompt).text.strip().upper()
             
-            # 雙重驗證：只有當 AI 回傳的是純英數字時才採納
             if re.match(r'^[A-Z0-9]+$', res) and res != "無":
                 ticker_result = res
         except:
@@ -163,7 +165,6 @@ def smart_resolve_ticker(user_input, api_key=""):
         if valid_tk:
             return valid_tk, name_result
 
-    # 5. 最後防線：Yahoo API 直接硬搜
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=3)
@@ -252,7 +253,9 @@ vix_status = "⚠️ 極度恐慌" if current_vix >= 25 else ("⚡ 波動加劇"
 st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color}; font-weight:bold;'>{current_vix:.2f} ({vix_status})</span>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (解鎖無限中文搜尋)", type="password")
+
+# 💡 自動載入您透過 Secrets 綁定的 Key
+api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (已自動載入)", value=MY_API_KEY, type="password")
 if api_key:
     genai.configure(api_key=api_key)
 
@@ -307,7 +310,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認左側是否已填寫 API Key。")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。若輸入中文失敗，請確認左側是否已成功綁定 API Key。")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -345,7 +348,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
-                # 取得乾淨的中文股名
                 _, zh_name = smart_resolve_ticker(item["ticker"], api_key)
                 
                 if item["ticker"] == "CASH":
@@ -444,6 +446,58 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 fig_bar.update_layout(barmode='group', height=400, margin=dict(t=40, b=0, l=0, r=0), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
+        # ==========================================
+        # 🤖 AI 投資組合總體檢
+        # ==========================================
+        st.markdown("---")
+        st.subheader("🤖 AI 投資組合總體檢")
+        if st.button(f"✨ 讓 Gemini 診斷我的【{market_label}】持股配置", key="portfolio_ai_btn", type="secondary"):
+            if not api_key:
+                st.warning("⚠️ 請先確保您的 Gemini API Key 已在 Secrets 中設定成功！")
+            else:
+                with st.spinner("🧠 正在將您的資產結構傳送給 Gemini 3.5 進行深度解析..."):
+                    portfolio_summary = f"總市值: NTD {int(local_total_val):,}\n"
+                    for item in current_view_data:
+                        tk_name = item['ticker'].replace('.TWO','').replace('.TW', '')
+                        real_pct = (item["now_val_ntd"] / local_total_val * 100) if local_total_val > 0 else 0
+                        portfolio_summary += f"- {tk_name}：目前佔比 {real_pct:.1f}% (設定目標 {item['target_pct']}%)，當前乖離率 {item['bias']:.1f}%，距高點回撤 {item['drawdown']:.1f}%\n"
+                        
+                    prompt = f"""
+                    你現在是一位頂級的財富管理顧問與量化交易員。
+                    請為我診斷以下的【{market_label}投資組合】目前狀態。
+                    
+                    【投資組合概況】
+                    {portfolio_summary}
+                    
+                    請以專業但白話的繁體中文給出：
+                    1. 資金配置健檢 (整體風險是否過度集中？防禦性部位是否足夠？)
+                    2. 再平衡具體操作建議 (針對偏離目標權重過多、或乖離率/回撤異常的特定標的，提出該買或賣的具體建議)
+                    3. 下階段總體戰略策略
+                    """
+                    try:
+                        model = genai.GenerativeModel("gemini-3.5-flash")
+                        response = model.generate_content(prompt)
+                        st.success("✅ 成功產生 AI 投資組合診斷報告！")
+                        st.info(response.text)
+                    except Exception as ai_err:
+                        err_str = str(ai_err)
+                        if "429" in err_str or "quota" in err_str.lower():
+                            st.warning("⚠️ 3.5 模型額度已滿，自動切換至 2.5 穩定版...")
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
+                                st.info(fallback_response.text)
+                            except: st.error("❌ 連線失敗，請稍候再試。")
+                        else:
+                            try:
+                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                st.info(fallback_response.text)
+                            except Exception as fallback_err:
+                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
+
 # ==========================================
 # 6. 分頁：全球 K 線分析
 # ==========================================
@@ -476,7 +530,7 @@ elif app_mode == "🔍 全球 K 線分析":
         ticker_input, zh_name = smart_resolve_ticker(target_to_parse, api_key)
         
         if not ticker_input:
-            st.error(f"❌ 查無此標的。若輸入中文失敗，請確認左側是否已填寫 API Key。")
+            st.error(f"❌ 查無此標的。若輸入中文失敗，請確認是否已成功綁定 API Key。")
         else:
             st.success(f"📊 智慧搜尋成功：系統已成功鎖定官方代碼為 ` {ticker_input} `")
             
@@ -567,14 +621,14 @@ elif app_mode == "🔍 全球 K 線分析":
                 st.code(f"系統詳細錯誤日誌: {str(e)}")
 
     # ==========================================
-    # 🤖 AI 診斷引擎
+    # 🤖 AI 單一個股診斷引擎
     # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
         st.subheader("🤖 AI 專屬個股診斷")
         if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
             if not api_key:
-                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key 密碼！")
+                st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
             else:
                 d = st.session_state.ai_data
                 with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
@@ -603,23 +657,19 @@ elif app_mode == "🔍 全球 K 線分析":
                     except Exception as ai_err:
                         err_str = str(ai_err)
                         if "429" in err_str or "quota" in err_str.lower():
-                            st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度(每分鐘15次)的 2.5 版穩定模型...")
+                            st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度的 2.5 版穩定模型...")
                             try:
                                 fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                 fallback_response = fallback_model.generate_content(prompt)
                                 st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
                                 st.info(fallback_response.text)
-                            except Exception as fallback_err:
+                            except Exception:
                                 st.error("❌ 連線失敗，可能所有模型的免費額度皆已用盡，請等待 1 分鐘後再試。")
-                        elif "404" in err_str:
-                            st.warning("⚠️ 系統偵測到 3.5 模型尚未完全開放。正自動為您無縫降級至穩定版 2.5...")
+                        else:
                             try:
                                 fallback_model = genai.GenerativeModel("gemini-2.5-flash")
                                 fallback_response = fallback_model.generate_content(prompt)
                                 st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
                                 st.info(fallback_response.text)
                             except Exception as fallback_err:
-                                st.error("❌ 連線失敗，請檢查 API 權限。")
-                        else:
-                            st.error(f"❌ 發生未知的連線錯誤：")
-                            st.code(err_str)
+                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
