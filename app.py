@@ -10,7 +10,6 @@ import os
 import re
 import numpy as np
 import requests
-import google.generativeai as genai # 🤖 導入 Gemini AI 套件
 
 # ==========================================
 # 0. 💥 核心抗封鎖引擎：建立偽裝瀏覽器連線 Session
@@ -68,7 +67,7 @@ DB_FILE = "portfolio_db.json"
 # ==========================================
 # 2. 🧠 終極大腦：台灣證交所/櫃買中心 官方字典直連
 # ==========================================
-@st.cache_data(ttl=86400) # 字典快取 24 小時更新一次即可
+@st.cache_data(ttl=86400)
 def get_tw_stock_dict():
     tw_dict = {}
     try:
@@ -215,8 +214,8 @@ st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color
 if current_vix >= 25: st.sidebar.error("🚨 警告：市場極度恐慌，持有槓桿 ETF 耗損風險極高！")
 
 st.sidebar.markdown("---")
+# 🤖 安全密碼輸入框
 api_key = st.sidebar.text_input("🔑 輸入 Gemini API Key (啟動 AI 大腦)", type="password")
-if api_key: genai.configure(api_key=api_key)
 
 app_mode = st.sidebar.radio("功能分頁導覽：", ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控", "🔍 全球 K 線分析"])
 st.sidebar.markdown("---")
@@ -255,7 +254,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="輸入代碼或名稱").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
-            
             if raw_tk: new_setup.append({"raw_ticker": raw_tk, "target_pct": pct, "shares_input": shares_input})
         
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
@@ -270,7 +268,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         locked_assets.append({"ticker": real_ticker, "target_pct": item["target_pct"], "leverage": lev, "init_shares": item["shares_input"], "init_price": m_data["price"], "is_tw": is_tw_mode})
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 2344) 即可秒殺通關！")
+            if error_tickers: st.error(f"⚠️ 無法識別標的：{', '.join(error_tickers)}。建議直接輸入『數字代碼』(如: 2344) 即可通關！")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -407,7 +405,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (降維支援舊版套件，徹底消滅 404)
+# 6. 分頁：全球 K 線分析 (🤖 改採原生 HTTP Post 請求直連官方服務)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -425,7 +423,6 @@ elif app_mode == "🔍 全球 K 線分析":
     if raw_ticker_input:
         ticker_input = resolve_ticker(raw_ticker_input)
         
-        # 🛠️ 修正：檢查如果解析結果為空（代表中文查無字典且非標準代碼），進行防呆阻斷
         if not ticker_input:
             st.error(f"❌ 查無此個股中文對應代碼。建議直接輸入『數字代碼』（如華邦電請輸入：2344，旺宏請輸入：2337，啟碁請輸入：6285）即可 100% 成功解碼！")
         else:
@@ -476,7 +473,6 @@ elif app_mode == "🔍 全球 K 線分析":
                         rsi_str = f"{rsi_val:.1f}"
                         rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
                         
-                        # 🛠️ 修正：卡片內文字強制寫死深色，確保所有配色主題下文字 100% 清晰看見
                         cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span style='font-size:1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
                         cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span style='font-size:1.1rem;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
                         cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span style='font-size:1.1rem;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
@@ -498,24 +494,16 @@ elif app_mode == "🔍 全球 K 線分析":
                         
                         fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
                         fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
-                        
-                        # 🛠️ 修正：強制將 Plotly 的 Modebar 工具列擺放在垂直側邊不干擾，徹底解決疊字問題
-                        fig.update_layout(
-                            xaxis_rangeslider_visible=False, 
-                            height=650, 
-                            margin=dict(t=60, b=10, l=10, r=10), 
-                            template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", 
-                            modebar=dict(orientation='v', bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc')
-                        )
+                        fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=60, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", modebar=dict(orientation='v', bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc'))
                         st.plotly_chart(fig, use_container_width=True)
 
                         st.markdown("---")
                         st.subheader("🤖 AI 專屬個股診斷")
                         if st.button("✨ 讓 Gemini 分析目前盤勢"):
                             if not api_key:
-                                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！才能喚醒 AI 喔！")
+                                st.warning("⚠️ 請先在左側邊欄輸入您的 Gemini API Key！")
                             else:
-                                with st.spinner("Gemini 正在匯整量化數據與技術指標，深度運算中..."):
+                                with st.spinner("正在直連 Google 官方 AI 伺服器進行量化運算..."):
                                     prompt = f"""
                                     你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供簡明扼要、專業的操作建議。
                                     標的：{clean_title}
@@ -532,13 +520,22 @@ elif app_mode == "🔍 全球 K 線分析":
                                     2. 多空風險評估 (結合 RSI 與均線判斷)
                                     3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
                                     """
+                                    
+                                    # 🛠️ 終極修復方案：完全捨棄 Python genai 庫，改採底層原生 HTTP POST 直接發送給 Google API 機房
                                     try:
-                                        # 🛠️ 終極修復：降維改用相容性高居榜首、絕對不報 404 的經典大腦模型 `"gemini-pro"`
-                                        model = genai.GenerativeModel("gemini-pro")
-                                        response = model.generate_content(prompt)
-                                        st.info(response.text)
-                                    except Exception as e:
-                                        st.error(f"AI 分析失敗，請檢查 API Key 是否正確或網路狀態。錯誤代碼：{e}")
+                                        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+                                        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                                        headers = {"Content-Type": "application/json"}
+                                        
+                                        response = requests.post(api_url, json=payload, headers=headers, timeout=15)
+                                        
+                                        if response.status_code == 200:
+                                            ai_text = response.json()['candidates'][0]['content']['parts'][0]['text']
+                                            st.info(ai_text)
+                                        else:
+                                            st.error(f"AI 伺服器拒絕請求，狀態碼：{response.status_code}，錯誤內容：{response.text}")
+                                    except Exception as http_err:
+                                        st.error(f"連線至 Google AI 核心失敗，請確認網路或 Key 狀態：{http_err}")
 
                     else: st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
