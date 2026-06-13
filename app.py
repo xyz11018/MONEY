@@ -13,10 +13,9 @@ import requests
 import google.generativeai as genai
 
 # ==========================================
-# 🔑 終極安全 API Key 讀取機制 (背景靜默載入)
+# 🔑 終極安全 API Key 讀取機制 
 # ==========================================
 try:
-    # 系統會自動去 Streamlit Cloud 後台的 Secrets 抓取密碼
     MY_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
     MY_API_KEY = ""
@@ -52,7 +51,6 @@ st.markdown("""
     .data-value { font-size: 1.1rem; font-weight: 700; }
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
     
-    /* 強制拔除所有 Plotly 隱藏工具列 */
     .modebar { display: none !important; }
     
     .dashboard-card {
@@ -73,7 +71,7 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🛡️ 史詩級三維度解析引擎 (字典 + AI 防幻覺 + Yahoo API)
+# 2. 🛡️ 史詩級三維度解析引擎
 # ==========================================
 STOCK_NAME_DICT = {
     "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
@@ -253,7 +251,6 @@ st.sidebar.markdown(f"📉 **VIX 恐慌指數：** <span style='color:{vix_color
 
 st.sidebar.markdown("---")
 
-# 💡 隱藏了輸入框，系統在背景默默為您掛載 API Key
 api_key = MY_API_KEY
 if api_key:
     genai.configure(api_key=api_key)
@@ -318,10 +315,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
 
     current_view_data = []
     local_total_val, local_total_exp = 0, 0
+    local_total_dividend = 0  # 💡 新增：計算總股息
     target_portfolio = db_data[current_list_key]
     
     if target_portfolio:
-        with st.spinner(f"🔄 正在運算動態數據..."):
+        with st.spinner(f"🔄 正在同步報價與股息資料..."):
             for asset in target_portfolio:
                 m_data = fetch_market_data(asset["ticker"])
                 if m_data and m_data["price"] > 0:
@@ -335,6 +333,18 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     exposure_ntd = now_val_ntd * lev
                     local_total_val += now_val_ntd
                     local_total_exp += exposure_ntd
+                    
+                    # 💡 新增：精準抓取每檔股票的殖利率
+                    try:
+                        if asset["ticker"] != "CASH" and not asset["ticker"].startswith("^"):
+                            yield_pct = float(yf.Ticker(asset["ticker"], session=yf_session).info.get('dividendYield', 0) or 0)
+                        else:
+                            yield_pct = 0.0
+                    except:
+                        yield_pct = 0.0
+                        
+                    local_total_dividend += (now_val_ntd * yield_pct)
+                    
                     current_view_data.append({**asset, "now_p": now_p, "date": date_str, "now_val_ntd": now_val_ntd, "exposure_ntd": exposure_ntd, "drawdown": m_data["drawdown"], "ma200": m_data["ma200"], "bias": m_data["bias"]})
 
         if current_view_data:
@@ -426,7 +436,12 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         with footer_cols[0]:
             st.subheader(f"💰 {market_label} 綜合指標總結")
             
-            st.metric(f"總投資市值 (NTD)", f"{int(local_total_val):,}")
+            # 💡 新增：顯示總投資市值與預估年領股息並列
+            sc1, sc2 = st.columns(2)
+            sc1.metric(f"總投資市值 (NTD)", f"{int(local_total_val):,}")
+            
+            avg_div_rate = (local_total_dividend / local_total_val * 100) if local_total_val > 0 else 0
+            sc2.metric(f"預估年度被動收入", f"NTD {int(local_total_dividend):,}", f"均殖利率約 {avg_div_rate:.2f}%")
             
             if current_view_data:
                 pie_df = pd.DataFrame([{"tk": "現金" if r["ticker"] == "CASH" else r["ticker"].replace('.TWO','').replace('.TW', ''), "val": r["now_val_ntd"]} for r in current_view_data])
@@ -498,7 +513,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                                 st.error("❌ 連線失敗，請檢查網路或 API 權限。")
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (💡 導入 Tabs 子分頁與新聞系統)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -574,101 +589,145 @@ elif app_mode == "🔍 全球 K 線分析":
                         except: pe, yield_pct, sector_str = 0, 0, "未提供"
                             
                         rsi_val = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 0
-                        
-                        st.markdown("### 📊 多維度戰情儀表板")
-                        cc1, cc2, cc3 = st.columns(3)
-                        pe_str = f"{pe:.1f} 倍" if pe > 0 else "無/虧損"
-                        yield_str = f"{yield_pct*100:.2f} %" if yield_pct > 0 else "無配息"
-                        rsi_str = f"{rsi_val:.1f}"
-                        rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
-                        
-                        card_style = "background-color: #f1f5f9; border-radius: 8px; padding: 14px; border-left: 5px solid #10b981; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px;"
-                        
-                        cc1.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>🏢 產業與板塊</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
-                        cc2.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>📈 核心基本面</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
-                        cc3.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>⚡ 短線動能 (14期 RSI)</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
-                        st.subheader(f"📈 {clean_title} {zh_name} 技術走勢")
-                        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
-                        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
-                        fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
-                        fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
-                        fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
-                        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
-                        
-                        if k_period == "日K": range_start = df.index.max() - pd.Timedelta(days=180)
-                        elif k_period == "週K": range_start = df.index.max() - pd.Timedelta(days=365*2)
-                        elif k_period == "月K": range_start = df.index.max() - pd.Timedelta(days=365*5)
-                        else: range_start = df.index.min()
-                        
-                        fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
-                        fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
-                        
-                        fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                         st.session_state.ai_data = {
                             "title": clean_title, "zh_name": zh_name, "k_period": k_period, "close": float(df['Close'].iloc[-1]),
-                            "n3": n3, "ma3": float(df['MA3'].iloc[-1]), "rsi": rsi_val, "rsi_status": rsi_status,
-                            "pe": pe_str, "yield": yield_str, "sector": sector_str
+                            "n3": n3, "ma3": float(df['MA3'].iloc[-1]), "rsi": rsi_val, "rsi_status": ("🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")),
+                            "pe": f"{pe:.1f} 倍" if pe > 0 else "無/虧損", "yield": f"{yield_pct*100:.2f} %" if yield_pct > 0 else "無配息", "sector": sector_str
                         }
+
+                        # 💡 核心更新：使用 Tabs 分頁系統讓畫面保持乾淨
+                        tab1, tab2 = st.tabs(["📈 技術走勢與 AI 診斷", "📰 市場新聞與 AI 深度解析"])
+                        
+                        with tab1:
+                            st.markdown("### 📊 多維度戰情儀表板")
+                            cc1, cc2, cc3 = st.columns(3)
+                            rsi_status = st.session_state.ai_data['rsi_status']
+                            
+                            card_style = "background-color: #f1f5f9; border-radius: 8px; padding: 14px; border-left: 5px solid #10b981; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px;"
+                            
+                            cc1.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>🏢 產業與板塊</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>📈 核心基本面</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>本益比: {st.session_state.ai_data['pe']} | 殖利率: {st.session_state.ai_data['yield']}</span></div>", unsafe_allow_html=True)
+                            cc3.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>⚡ 短線動能 (14期 RSI)</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{rsi_val:.1f} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                            st.markdown("<br>", unsafe_allow_html=True)
+                            
+                            st.subheader(f"📈 {clean_title} {zh_name} 技術走勢")
+                            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+                            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=df.index, y=df['MA1'], mode='lines', name=n1, line=dict(color='#ff9900', width=1.5)), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=df.index, y=df['MA2'], mode='lines', name=n2, line=dict(color='#00ffcc', width=1.5)), row=1, col=1)
+                            fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#ef4444', width=2)), row=1, col=1)
+                            fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="成交量", marker_color="#475569"), row=2, col=1)
+                            
+                            if k_period == "日K": range_start = df.index.max() - pd.Timedelta(days=180)
+                            elif k_period == "週K": range_start = df.index.max() - pd.Timedelta(days=365*2)
+                            elif k_period == "月K": range_start = df.index.max() - pd.Timedelta(days=365*5)
+                            else: range_start = df.index.min()
+                            
+                            fig.update_xaxes(range=[range_start, df.index.max()], row=1, col=1)
+                            fig.update_xaxes(range=[range_start, df.index.max()], row=2, col=1)
+                            
+                            fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=40, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white")
+                            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+                            st.markdown("---")
+                            st.subheader("🤖 AI 專屬個股診斷 (技術面)")
+                            if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
+                                if not api_key:
+                                    st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
+                                else:
+                                    d = st.session_state.ai_data
+                                    with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
+                                        prompt = f"""
+                                        你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
+                                        標的：{d['title']} {d['zh_name']}
+                                        K線週期：{d['k_period']}
+                                        最新收盤價：{d['close']:.2f}
+                                        關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
+                                        14期 RSI：{d['rsi']:.1f} ({d['rsi_status']})
+                                        本益比：{d['pe']}
+                                        殖利率：{d['yield']}
+                                        所屬板塊：{d['sector']}
+                                        
+                                        請以繁體中文給出：
+                                        1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
+                                        2. 多空風險評估 (結合 RSI 與均線判斷)
+                                        3. 短中線具體操作建議
+                                        """
+                                        
+                                        try:
+                                            model = genai.GenerativeModel("gemini-3.5-flash")
+                                            response = model.generate_content(prompt)
+                                            st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
+                                            st.info(response.text)
+                                        except Exception as ai_err:
+                                            err_str = str(ai_err)
+                                            if "429" in err_str or "quota" in err_str.lower():
+                                                st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度的 2.5 版穩定模型...")
+                                                try:
+                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                                    fallback_response = fallback_model.generate_content(prompt)
+                                                    st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
+                                                    st.info(fallback_response.text)
+                                                except Exception:
+                                                    st.error("❌ 連線失敗，可能所有模型的免費額度皆已用盡，請等待 1 分鐘後再試。")
+                                            else:
+                                                try:
+                                                    fallback_model = genai.GenerativeModel("gemini-2.5-flash")
+                                                    fallback_response = fallback_model.generate_content(prompt)
+                                                    st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
+                                                    st.info(fallback_response.text)
+                                                except Exception as fallback_err:
+                                                    st.error("❌ 連線失敗，請檢查網路或 API 權限。")
+
+                        # 💡 核心更新：新聞分析分頁
+                        with tab2:
+                            st.markdown(f"### 📰 {clean_title} {zh_name} 近期焦點新聞")
+                            try:
+                                # 抓取 Yahoo Finance 的近期新聞
+                                news_list = yf.Ticker(ticker_input, session=yf_session).news[:5]
+                            except:
+                                news_list = []
+                                
+                            if news_list:
+                                news_text_for_ai = ""
+                                for i, n in enumerate(news_list):
+                                    title = n.get('title', '無標題')
+                                    publisher = n.get('publisher', '未知來源')
+                                    link = n.get('link', '#')
+                                    st.markdown(f"**{i+1}. [{title}]({link})** _(來源: {publisher})_")
+                                    news_text_for_ai += f"標題: {title}\n來源: {publisher}\n\n"
+                                
+                                st.markdown("---")
+                                if st.button("✨ 讓 Gemini 總結近期多空情緒 (基本面)", key="news_ai_btn", type="primary"):
+                                    if not api_key:
+                                        st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
+                                    else:
+                                        with st.spinner("🧠 正在讓 AI 閱讀上述新聞並剖析市場情緒..."):
+                                            news_prompt = f"""
+                                            你現在是一位專業的法人機構操盤手。請根據以下關於「{clean_title} {zh_name}」的最新 5 篇新聞標題與來源，進行市場情緒判讀。
+                                            
+                                            【近期新聞】
+                                            {news_text_for_ai}
+                                            
+                                            請以專業、精煉的繁體中文給出：
+                                            1. 市場情緒總結 (目前是極度樂觀、偏多、中性、偏空還是恐慌？)
+                                            2. 近期事件核心焦點 (條列出 2-3 個導致目前情緒的關鍵字或事件)
+                                            3. 潛在風險或催化劑 (這些新聞暗示了哪些我們需要注意的未來動向？)
+                                            """
+                                            try:
+                                                # 文字解析屬於低耗能工作，使用穩定極速的 2.5 即可
+                                                model = genai.GenerativeModel("gemini-2.5-flash")
+                                                response = model.generate_content(news_prompt)
+                                                st.success("✅ AI 新聞情緒解析完畢！")
+                                                st.info(response.text)
+                                            except Exception as e:
+                                                st.error("❌ AI 讀取新聞失敗，請確認 API 連線狀態。")
+                                                st.code(str(e))
+                            else:
+                                st.info("目前抓取不到該標的的近期相關新聞。")
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except Exception as e:
                 st.error(f"圖表載入失敗，請確認網路或輸入的名稱是否正確。")
                 st.code(f"系統詳細錯誤日誌: {str(e)}")
-
-    # ==========================================
-    # 🤖 AI 單一個股診斷引擎
-    # ==========================================
-    if st.session_state.ai_data is not None:
-        st.markdown("---")
-        st.subheader("🤖 AI 專屬個股診斷")
-        if st.button("✨ 讓 Gemini 分析目前盤勢", key="ai_btn", type="secondary"):
-            if not api_key:
-                st.warning("⚠️ 請先確認您的 Gemini API Key 已填寫！")
-            else:
-                d = st.session_state.ai_data
-                with st.spinner("正在呼叫最新一代 Gemini 3.5 Flash 進行大數據診斷..."):
-                    prompt = f"""
-                    你現在是一位頂級的量化交易分析師。請根據以下最新抓取的股票數據，為我提供操作建議。
-                    標的：{d['title']} {d['zh_name']}
-                    K線週期：{d['k_period']}
-                    最新收盤價：{d['close']:.2f}
-                    關鍵長天期均線 ({d['n3']})：{d['ma3']:.2f}
-                    14期 RSI：{d['rsi']:.1f} ({d['rsi_status']})
-                    本益比：{d['pe']}
-                    殖利率：{d['yield']}
-                    所屬板塊：{d['sector']}
-                    
-                    請以繁體中文給出：
-                    1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
-                    2. 多空風險評估 (結合 RSI 與均線判斷)
-                    3. 短中線具體操作建議
-                    """
-                    
-                    try:
-                        model = genai.GenerativeModel("gemini-3.5-flash")
-                        response = model.generate_content(prompt)
-                        st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
-                        st.info(response.text)
-                    except Exception as ai_err:
-                        err_str = str(ai_err)
-                        if "429" in err_str or "quota" in err_str.lower():
-                            st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度的 2.5 版穩定模型...")
-                            try:
-                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 自動降檔成功！對接 Gemini 2.5 模型，以下是診斷結果：")
-                                st.info(fallback_response.text)
-                            except Exception:
-                                st.error("❌ 連線失敗，可能所有模型的免費額度皆已用盡，請等待 1 分鐘後再試。")
-                        else:
-                            try:
-                                fallback_model = genai.GenerativeModel("gemini-2.5-flash")
-                                fallback_response = fallback_model.generate_content(prompt)
-                                st.success("✅ 成功對接 Gemini 2.5 穩定版模型！")
-                                st.info(fallback_response.text)
-                            except Exception as fallback_err:
-                                st.error("❌ 連線失敗，請檢查網路或 API 權限。")
