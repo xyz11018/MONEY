@@ -8,11 +8,12 @@ import pandas as pd
 import json
 import os
 import re
+import numpy as np
 import requests
-import google.generativeai as genai # 🤖 新增：導入 Gemini AI 套件
+import google.generativeai as genai # 🤖 導入 Gemini AI 套件
 
 # ==========================================
-# 0. 核心抗封鎖引擎
+# 0. 💥 核心抗封鎖引擎：建立偽裝瀏覽器連線 Session
 # ==========================================
 yf_session = requests.Session()
 yf_session.headers.update({
@@ -20,47 +21,71 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置
+# 1. 頁面配置與專業金融視覺優化
 # ==========================================
-st.set_page_config(layout="wide", page_title="資金配置決策系統", page_icon="🏦")
-st.markdown("""<style>
-    .market-header { padding: 16px; border-radius: 10px; font-weight: 700; margin-bottom: 20px; font-size: 1.3rem; color: #ffffff !important; }
+st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
+
+st.markdown("""
+    <style>
+    :root { --bg-panel: #1e293b; --text-main: #f8fafc; --accent-tw: #00ffcc; --accent-us: #f97316; }
+    .market-header { 
+        padding: 16px 20px; border-radius: 10px; font-weight: 700; 
+        margin-bottom: 20px; font-size: 1.3rem; color: #ffffff !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        letter-spacing: 1px;
+    }
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
-    .ticker-display { font-size: 1.8rem; font-weight: 900; }
-    .data-label { font-size: 0.8rem; opacity: 0.6; }
-    .data-value { font-weight: 700; font-size: 1rem; }
-    .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; margin-top: 10px; border-radius: 5px; }
-</style>""", unsafe_allow_html=True)
+    
+    .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
+    .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
+    .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600;}
+    .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
+    .data-value { font-size: 1.1rem; font-weight: 700; }
+    
+    .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
+    
+    label, .stMarkdown p { font-weight: 500; }
+    hr { border-color: rgba(148, 163, 184, 0.2); }
+    </style>
+""", unsafe_allow_html=True)
 
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 智慧解析引擎
+# 2. 🧠 終極大腦：台灣證交所/櫃買中心 官方字典直連
 # ==========================================
-@st.cache_data(ttl=86400)
+@st.cache_data(ttl=86400) # 字典快取 24 小時更新一次即可
 def get_tw_stock_dict():
     tw_dict = {}
+    # 1. 抓取上市股票 (TWSE)
     try:
         res = requests.get("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", timeout=5)
         if res.status_code == 200:
-            for item in res.json(): tw_dict[item["Name"].strip()] = f"{item['Code'].strip()}.TW"
+            for item in res.json():
+                tw_dict[item["Name"].strip()] = f"{item['Code'].strip()}.TW"
     except: pass
+    
+    # 2. 抓取上櫃股票 (TPEx)
     try:
         res = requests.get("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes", timeout=5)
         if res.status_code == 200:
-            for item in res.json(): tw_dict[item["CompanyName"].strip()] = f"{item['SecuritiesCompanyCode'].strip()}.TWO"
+            for item in res.json():
+                tw_dict[item["CompanyName"].strip()] = f"{item['SecuritiesCompanyCode'].strip()}.TWO"
     except: pass
+    
     return tw_dict
 
 def resolve_ticker(user_input):
     t = user_input.strip()
     if not t: return ""
     t_upper = t.upper()
+    
     if t_upper in ["現金", "CASH"]: return "CASH"
     if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
     
-    tw_dict = get_tw_stock_dict()
+    # 載入官方全字典與美股/別名快捷鍵
+    dynamic_tw_dict = get_tw_stock_dict()
     local_map = {
         "台積電": "2330.TW", "台灣積體電路": "2330.TW", "台灣積體電路製造": "2330.TW",
         "正2": "00631L.TW", "蘋果": "AAPL", "微軟": "MSFT", "輝達": "NVDA", 
@@ -68,8 +93,11 @@ def resolve_ticker(user_input):
         "META": "META", "網飛": "NFLX"
     }
     
+    # 第一關：絕對精確比對
     if t in local_map: return local_map[t]
-    if t in tw_dict: return tw_dict[t]
+    if t in dynamic_tw_dict: return dynamic_tw_dict[t]
+    
+    # 第二關：數字探測引擎
     if re.match(r'^\d+[A-Z]?$', t_upper):
         try:
             if yf.Ticker(f"{t_upper}.TW", session=yf_session).fast_info.get('lastPrice'): return f"{t_upper}.TW"
@@ -79,11 +107,13 @@ def resolve_ticker(user_input):
         except: pass
         return f"{t_upper}.TW"
 
+    # 第三關：模糊智慧比對
     for name, ticker in local_map.items():
         if t in name or name in t: return ticker
-    for name, ticker in tw_dict.items():
+    for name, ticker in dynamic_tw_dict.items():
         if t in name or name in t: return ticker
 
+    # 最終備援：若字典皆無，才去撞 Yahoo API
     try:
         url = f"https://query2.finance.yahoo.com/v1/finance/search?q={t}&lang=zh-Hant-TW&region=TW"
         r = requests.get(url, headers=yf_session.headers, timeout=3)
@@ -95,63 +125,74 @@ def resolve_ticker(user_input):
                     if sym.endswith(".TW") or sym.endswith(".TWO"): return sym
                 return quotes[0].get('symbol', '').upper()
     except: pass
+        
     return t_upper
 
 def get_leverage(ticker):
+    if ticker == "CASH": return 1.0
     t = ticker.upper()
-    if t == "CASH": return 1.0
     if t.endswith("L.TW") or t.endswith("L.TWO"): return 2.0
     if t.endswith("R.TW") or t.endswith("R.TWO"): return -1.0
-    if any(x in t for x in ["TQQQ", "SOXL", "UPRO", "TMF", "FNGU"]): return 3.0
-    if any(x in t for x in ["QLD", "SSO", "NVDL", "TSLL"]): return 2.0
-    if any(x in t for x in ["SQQQ", "SOXS", "SPXU", "SDOW", "TMV"]): return -3.0
+    us_3x = ["TQQQ", "SOXL", "UPRO", "UDOW", "TMF", "FAS", "TECL", "CURE", "NAIL", "YINN", "WEBL", "DPST", "FNGU"]
+    us_2x = ["QLD", "SSO", "USD", "UWM", "MVV", "NVDL", "TSLL"]
+    us_n3x = ["SQQQ", "SOXS", "SPXU", "SDOW", "TMV", "FAZ", "TECS", "WEBS", "FNGD"]
+    base = t.split('.')[0]
+    if base in us_3x: return 3.0
+    if base in us_2x: return 2.0
+    if base in us_n3x: return -3.0
     return 1.0
 
 # ==========================================
-# 3. 資料獲取引擎
+# 3. 強制即時化數據引擎 (掛載連線 Session)
 # ==========================================
 def fetch_market_data(ticker):
     if ticker == "CASH": 
-        return {"price": 1.0, "date": "最新即時", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d")
+        return {"price": 1.0, "date": "最新即時匯率", "ma200": 1.0, "high52w": 1.0, "drawdown": 0.0, "bias": 0.0}
     try:
         t_obj = yf.Ticker(ticker, session=yf_session)
-        realtime_price = None
-        try: realtime_price = float(t_obj.fast_info.get('lastPrice'))
-        except: pass
+        try: realtime_price = float(t_obj.fast_info['lastPrice'])
+        except: realtime_price = None
 
         df = yf.download(ticker, period="2y", progress=False, session=yf_session)
-        if df.empty: return None
-        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-        
-        closes = df['Close'].dropna()
-        highs = df['High'].dropna()
-        if closes.empty: return None
-        
-        hist_last_price = float(closes.iloc[-1])
-        date_str = closes.index[-1].strftime("%Y-%m-%d")
-        
-        price = float(realtime_price) if realtime_price else hist_last_price
-        date_str = "最新即時" if realtime_price else date_str
-        
-        high52w = float(highs.max())
-        if price > high52w: high52w = price 
-        
-        ma200 = float(closes.rolling(window=200).mean().iloc[-1]) if len(closes) >= 200 else price
-        drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
-        bias = ((price - ma200) / ma200) * 100 if ma200 > 0 else 0.0
-        
-        return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, "bias": bias}
-    except: return None
+        if not df.empty:
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            closes = df['Close'].dropna()
+            highs = df['High'].dropna()
+            if not closes.empty: 
+                hist_last_price = float(closes.iloc[-1])
+                date_str = closes.index[-1].strftime("%Y-%m-%d")
+                
+                price = realtime_price if realtime_price is not None else hist_last_price
+                if realtime_price is not None: date_str = "最新即時收盤"
 
+                high52w = float(highs.max())
+                if price > high52w: high52w = price 
+                
+                ma200 = float(closes.rolling(window=200).mean().iloc[-1]) if len(closes) >= 200 else price
+                drawdown = ((price - high52w) / high52w) * 100 if high52w > 0 else 0.0
+                bias = ((price - ma200) / ma200) * 100 if ma200 > 0 else 0.0
+                
+                return {"price": price, "date": date_str, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, "bias": bias}
+    except: return None
+    return None
+
+# ==========================================
+# 4. 存檔與側邊欄設定
+# ==========================================
 def load_portfolio():
+    default_data = {"tw_portfolio": [], "us_portfolio": []}
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, "r", encoding="utf-8") as f: return json.load(f)
+            with open(DB_FILE, "r", encoding="utf-8") as f: 
+                data = json.load(f)
+                return {k: data[k] for k in default_data.keys() if k in data}
         except: pass
-    return {"tw_portfolio": [], "us_portfolio": []}
+    return default_data
 
 def save_portfolio(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
 
 twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data else 32.5
@@ -160,10 +201,8 @@ current_vix = vix_data["price"] if vix_data else 15.0
 
 db_data = load_portfolio()
 
-# ==========================================
-# 4. 主介面：側邊欄 (🤖 整合 AI 密碼框)
-# ==========================================
-st.sidebar.title("🏦 資金配置決策系統")
+# --- 側邊欄 ---
+st.sidebar.title("🏦 資產配置決策系統")
 st.sidebar.markdown(f"📈 **即時匯率 USD/TWD：** `{current_rate:.2f}`")
 
 vix_color = "#ef4444" if current_vix >= 25 else ("#f59e0b" if current_vix >= 20 else "#10b981")
@@ -189,7 +228,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     num_assets = st.sidebar.number_input("🔢 展開標的輸入欄位數", value=max(3, len(db_data.get("tw_portfolio" if app_mode == "🇹🇼 台股持股監控" else "us_portfolio", []))), min_value=1)
 
 # ==========================================
-# 5. 資產動態監控盤
+# 5. 主功能：資產動態監控盤
 # ==========================================
 if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     is_tw_mode = (app_mode == "🇹🇼 台股持股監控")
@@ -366,7 +405,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (結合多維度儀表板與 🤖 AI 診斷)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -454,7 +493,6 @@ elif app_mode == "🔍 全球 K 線分析":
                     fig.update_layout(xaxis_rangeslider_visible=False, height=650, margin=dict(t=60, b=10, l=10, r=10), template="plotly_dark" if st.get_option("theme.base") == "dark" else "plotly_white", modebar=dict(bgcolor='rgba(0,0,0,0)', color='gray', activecolor='#00ffcc'))
                     st.plotly_chart(fig, use_container_width=True)
 
-                    # 🤖 整合 Gemini AI 智能診斷按鈕
                     st.markdown("---")
                     st.subheader("🤖 AI 專屬個股診斷")
                     if st.button("✨ 讓 Gemini 分析目前盤勢"):
@@ -485,6 +523,5 @@ elif app_mode == "🔍 全球 K 線分析":
                                 except Exception as e:
                                     st.error(f"AI 分析失敗，請檢查 API Key 是否正確或網路狀態。錯誤代碼：{e}")
 
-                else:
-                    st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
+                else: st.error("⚠️ 交易所伺服器忙碌中或抓取失敗，請確認名稱無誤後稍候重試。")
         except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
