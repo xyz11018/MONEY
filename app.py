@@ -44,25 +44,49 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 智慧代碼解析與槓桿自動偵測引擎
+# 2. 智慧代碼與名稱雙向解析引擎 (全新升級)
 # ==========================================
 def resolve_ticker(user_input):
-    t = user_input.strip().upper()
+    """支援輸入純數字代碼(2330)、中文名稱(台積電)或美股代碼(AAPL)，自動秒速解析"""
+    t = user_input.strip()
     if not t: return ""
-    if t in ["現金", "CASH"]: return "CASH"
-    if t.startswith("^") or t.endswith(".TW") or t.endswith(".TWO"): return t
-    if re.match(r'^\d+[A-Z]?$', t):
-        test_tw = yf.download(f"{t}.TW", period="1d", progress=False)
-        if not test_tw.empty: return f"{t}.TW"
-        test_two = yf.download(f"{t}.TWO", period="1d", progress=False)
-        if not test_two.empty: return f"{t}.TWO"
-        return f"{t}.TW"
-    if re.search(r'[\u4e00-\u9fff]', t):
-        try:
-            res = yf.Search(t, max_results=1).quotes
-            if res: return res[0]['symbol']
-        except: pass
-    return t
+    t_upper = t.upper()
+    if t_upper in ["現金", "CASH"]: return "CASH"
+    if t_upper.startswith("^") or t_upper.endswith(".TW") or t_upper.endswith(".TWO"): return t_upper
+    
+    # 智慧模糊雙向搜尋
+    try:
+        res = yf.Search(t, max_results=5).quotes
+        if res:
+            # 優先尋找符合的台灣市場代碼 (.TW 或 .TWO)
+            for q in res:
+                sym = q['symbol'].upper()
+                # 如果輸入的是純數字，且搜尋結果代碼開頭吻合
+                if re.match(r'^\d+$', t_upper):
+                    if sym.startswith(t_upper) and (sym.endswith(".TW") or sym.endswith(".TWO")):
+                        return sym
+                else:
+                    # 如果輸入的是中文名稱，只要是台股就優先回傳
+                    if sym.endswith(".TW") or sym.endswith(".TWO"):
+                        return sym
+            
+            # 次優先：如果輸入的是純數字，直接回傳第一個代碼開頭相符的項目
+            if re.match(r'^\d+$', t_upper):
+                for q in res:
+                    sym = q['symbol'].upper()
+                    if sym.startswith(t_upper):
+                        return sym
+                        
+            # 最終備援：直接回傳第一筆搜尋結果 (例如美股名稱或代碼)
+            return res[0]['symbol'].upper()
+    except:
+        pass
+    
+    # 若搜尋引擎離線且為純數字，預設補上 .TW 作為防線
+    if re.match(r'^\d+$', t_upper):
+        return f"{t_upper}.TW"
+        
+    return t_upper
 
 def get_leverage(ticker):
     if ticker == "CASH": return 1.0
@@ -79,7 +103,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 強制即時化數據引擎 (包含年線與回撤)
+# 3. 強制即時化數據引擎 
 # ==========================================
 def fetch_market_data(ticker):
     """回傳最新現價、日期、年線MA200、52週高點，計算回撤率與乖離率"""
@@ -170,9 +194,9 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
     st.markdown(f'<h1>🏦 {app_mode.split(" ")[1]} 專業戰術面板</h1>', unsafe_allow_html=True)
     
     with st.expander(f"⚙️ 編輯 {market_label} 初始配置 (直接輸入持股)", expanded=(not db_data[current_list_key])):
-        st.info(f"💡 提示：請直接輸入您真實持有的「股數」。若為現金或大盤指數，請輸入投入的「總數量」。")
+        st.info(f"💡 提示：代碼欄位可直接輸入「數字代碼（如: 2330）」或「中文名稱（如: 台積電）」，系統會自動連結。")
         cols = st.columns([2, 2, 2])
-        cols[0].markdown("**代碼 / 現金**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
+        cols[0].markdown("**代碼 或 名稱**"); cols[1].markdown("**持有股數**"); cols[2].markdown("**目標權重%**")
         
         new_setup = []
         for i in range(int(num_assets)):
@@ -184,7 +208,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
             safe_pct = min(100.0, max(0.0, float(hist.get("target_pct", 0.0))))
             safe_shares = max(0.0, float(hist.get("init_shares", 0.0)))
             
-            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="代碼 或 現金").strip()
+            raw_tk = r_cols[0].text_input(f"tk_{i}", display_tk, label_visibility="collapsed", placeholder="例如: 2330 或 台積電").strip()
             shares_input = r_cols[1].number_input(f"shares_{i}", min_value=0.0, value=safe_shares, step=100.0, label_visibility="collapsed")
             pct = r_cols[2].number_input(f"pct_{i}", min_value=0.0, max_value=100.0, value=safe_pct, step=5.0, label_visibility="collapsed")
             
@@ -193,7 +217,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
         if st.button(f"📌 鎖定 {market_label} 庫存並更新系統", type="primary"):
             locked_assets = []
             error_tickers = []
-            with st.spinner('正在解析代碼並同步即時市場數據...'):
+            with st.spinner('正在智慧解析代碼與名稱並同步實時數據...'):
                 for item in new_setup:
                     real_ticker = resolve_ticker(item["raw_ticker"])
                     m_data = fetch_market_data(real_ticker)
@@ -206,7 +230,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         })
                     else: error_tickers.append(item["raw_ticker"])
             
-            if error_tickers: st.error(f"⚠️ 無法抓取以下代碼：{', '.join(error_tickers)}")
+            if error_tickers: st.error(f"⚠️ 無法識別或抓取以下標的：{', '.join(error_tickers)}")
             else:
                 db_data[current_list_key] = locked_assets
                 save_portfolio(db_data)
@@ -247,7 +271,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 target_val = local_total_val * (item["target_pct"] / 100.0)
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
-                lev_warning = ""
                 
                 if item["ticker"] == "CASH":
                     currency_str = "TWD" if is_tw_mode else "USD"
@@ -301,7 +324,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                         tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
-                    if is_bear and item.get("leverage", 1.0) >= 2.0: lev_warning = " <span style='font-size:0.8rem; color:#ef4444;'>(⚠️破線)</span>"
 
                 if abs(diff) > threshold: 
                     c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -371,11 +393,11 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ==========================================
-# 6. 分頁：全球 K 線分析
+# 6. 分頁：全球 K 線分析 (支援中文與代碼智慧搜尋)
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
-    # 💥 已依照要求成功更新此處標題 💥
-    st.title("🔍 全球金融標的技術分析，也可以中文搜尋")
+    # 標題維持純淨，將提示移入下方輸入框中
+    st.title("🔍 全球金融標的技術分析")
     
     if market_choice == "台灣加權指數 (台股)": default_ticker = "^TWII"
     elif market_choice == "那斯達克 (美股科技)": default_ticker = "^IXIC"
@@ -384,7 +406,8 @@ elif app_mode == "🔍 全球 K 線分析":
     else: default_ticker = "6285"
     
     if market_choice == "自訂輸入個股":
-        raw_ticker_input = st.text_input("輸入欲分析代碼：", default_ticker)
+        # 💥 此處提示標記已全面優化 💥
+        raw_ticker_input = st.text_input("輸入欲分析的代碼或名稱 (如: 2330 或 台積電)：", default_ticker)
     else: raw_ticker_input = default_ticker
     
     if raw_ticker_input:
