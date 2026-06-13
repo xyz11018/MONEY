@@ -21,13 +21,12 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與視覺優化 (終極修正白字隱形)
+# 1. 頁面配置
 # ==========================================
 st.set_page_config(layout="wide", page_title="資產配置決策系統", page_icon="🏦")
 
 st.markdown("""
     <style>
-    :root { --bg-panel: #1e293b; --text-main: #f8fafc; --accent-tw: #00ffcc; --accent-us: #f97316; }
     .market-header { 
         padding: 16px 20px; border-radius: 10px; font-weight: 700; 
         margin-bottom: 20px; font-size: 1.3rem; color: #ffffff !important;
@@ -36,31 +35,12 @@ st.markdown("""
     }
     .tw-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #00ffcc; }
     .us-market { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-left: 8px solid #f97316; }
-    
     .ticker-display { font-size: 2.2rem; font-weight: 900; line-height: 1.1; letter-spacing: 0.5px; }
     .price-display { font-size: 1.1rem; font-weight: 600; opacity: 0.8; margin-top: 4px; }
     .date-display { font-size: 0.85rem; color: #94a3b8; margin-top: 2px; font-weight: 600;}
     .data-label { font-size: 0.95rem; opacity: 0.7; margin-bottom: 2px;}
     .data-value { font-size: 1.1rem; font-weight: 700; }
-    
     .action-box { background: rgba(16, 185, 129, 0.1); border-left: 4px solid #10b981; padding: 10px; border-radius: 5px; margin-top: 15px; }
-    
-    /* 🛠️ 強制設定為淺灰底、深色字，無視系統日夜模式，保證 100% 清晰 */
-    .dashboard-card {
-        background-color: #f1f5f9 !important; 
-        border-radius: 8px;
-        padding: 14px;
-        border-left: 5px solid #10b981;
-        color: #0f172a !important; 
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-    }
-    .dashboard-card b, .dashboard-card span {
-        color: #0f172a !important;
-        font-weight: 700 !important;
-    }
-    
-    label, .stMarkdown p { font-weight: 500; }
-    hr { border-color: rgba(148, 163, 184, 0.2); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -317,7 +297,6 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                     elif is_bear and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:700;'>🔴 破線 (強烈建議降槓桿)</span>"
                     elif item["drawdown"] <= -50: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟢 終極打擊區 (強力加碼)</span>"
                     elif item["drawdown"] <= -30: tactical_action = "<span style='color:#10b981; font-weight:700;'>🟡 階梯打擊區 (分批加碼)</span>"
-                    elif item["drawdown"] <= -15 and item.get("leverage", 1.0) >= 2.0 and not is_bear: tactical_action = "<span style='color:#f97316; font-weight:700;'>🛡️ 動態防守 (移動停損警示)</span>"
                     c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item['bias']:+.1f}%</div><div class='data-label' style='margin-top:4px;'>🧠 戰術建議:</div><div style='font-size:1.05rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 if abs(diff) > threshold: c[5].warning(f"⚠️ 偏離 {diff:+.1f}% (佔比: {real_pct:.1f}%)\n\n👉 **{action_text}**")
@@ -451,9 +430,11 @@ elif app_mode == "🔍 全球 K 線分析":
                         rsi_str = f"{rsi_val:.1f}"
                         rsi_status = "🔴 超買過熱" if rsi_val > 70 else ("🟢 超賣低估" if rsi_val < 30 else "🟡 中性盤整")
                         
-                        cc1.markdown(f"<div class='dashboard-card'><b>🏢 產業與板塊</b><br><span>{sector_str}</span></div>", unsafe_allow_html=True)
-                        cc2.markdown(f"<div class='dashboard-card'><b>📈 核心基本面</b><br><span>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
-                        cc3.markdown(f"<div class='dashboard-card'><b>⚡ 短線動能 (14期 RSI)</b><br><span>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
+                        card_style = "background-color: #f1f5f9; border-radius: 8px; padding: 14px; border-left: 5px solid #10b981; color: #0f172a; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 10px;"
+                        
+                        cc1.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>🏢 產業與板塊</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{sector_str}</span></div>", unsafe_allow_html=True)
+                        cc2.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>📈 核心基本面</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>本益比: {pe_str} | 殖利率: {yield_str}</span></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div style='{card_style}'><b style='color: #0f172a;'>⚡ 短線動能 (14期 RSI)</b><br><span style='color: #0f172a; font-weight: 700; font-size: 1.1rem;'>{rsi_str} ({rsi_status})</span></div>", unsafe_allow_html=True)
                         st.markdown("<br>", unsafe_allow_html=True)
                         
                         clean_title = ticker_input.replace('.TWO', '').replace('.TW', '')
@@ -484,6 +465,9 @@ elif app_mode == "🔍 全球 K 線分析":
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
             except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
 
+    # ==========================================
+    # 🤖 終極防護網 AI 診斷按鈕 (自動降級與權限掃描)
+    # ==========================================
     if st.session_state.ai_data is not None:
         st.markdown("---")
         st.subheader("🤖 AI 專屬個股診斷")
@@ -507,13 +491,35 @@ elif app_mode == "🔍 全球 K 線分析":
                     請以繁體中文給出：
                     1. 盤勢總結 (一句話點出目前位階是便宜、昂貴、多頭還是空頭)
                     2. 多空風險評估 (結合 RSI 與均線判斷)
-                    3. 短中線具體操作建議 (例如：長線逢低建倉、短線過熱減碼、或是耐心觀望)
+                    3. 短中線具體操作建議
                     """
+                    
                     try:
+                        # 嘗試呼叫最新的 1.5-flash 模型
                         model = genai.GenerativeModel("gemini-1.5-flash")
                         response = model.generate_content(prompt)
                         st.info(response.text)
                     except Exception as ai_err:
-                        st.error(f"❌ 發生權限錯誤。\n這表示您的 API Key 尚未開通 Gemini 模型權限。")
-                        st.warning("👉 請確認您已於 Google Cloud 中啟用「Gemini API」，並將產生之金鑰貼入。")
-                        st.code(str(ai_err))
+                        err_str = str(ai_err)
+                        if "404" in err_str:
+                            st.warning("⚠️ 系統偵測到您的密碼無法存取 1.5 最新模型 (404)。正在自動為您降級至相容性最高的『gemini-pro』模型...")
+                            try:
+                                # 自動降級到所有帳號都絕對支援的基礎模型 (Gemini 1.0)
+                                fallback_model = genai.GenerativeModel("gemini-pro")
+                                fallback_response = fallback_model.generate_content(prompt)
+                                st.success("✅ 降級切換成功！以下是 AI 診斷結果：")
+                                st.info(fallback_response.text)
+                            except Exception as fallback_err:
+                                st.error("❌ 連基礎版模型都被拒絕。正在為您直接掃描此金鑰的真實權限...")
+                                try:
+                                    # 掃描此金鑰到底可以使用哪些模型
+                                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                                    if not models:
+                                        st.code("掃描結果：這把金鑰【沒有】任何 AI 文本生成的權限。\n\n請務必將左側密碼框內的舊密碼清空，並貼上您剛在 AI Studio 新申請的那把密碼！")
+                                    else:
+                                        st.code(f"掃描結果：這把金鑰目前只能使用以下模型：\n{models}")
+                                except Exception as list_err:
+                                    st.code(f"無法列出模型，可能是連線問題：{list_err}")
+                        else:
+                            st.error(f"❌ 發生未知的連線錯誤：")
+                            st.code(err_str)
