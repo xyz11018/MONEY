@@ -64,8 +64,24 @@ st.markdown("""
 DB_FILE = "portfolio_db.json"
 
 # ==========================================
-# 2. 🧠 終極 AI 萬能解析引擎 (取代不穩定的 Yahoo 搜尋)
+# 2. 終極強固解析引擎 (擴充版本地字典)
 # ==========================================
+STOCK_NAME_DICT = {
+    "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
+    "2317": "鴻海", "2603": "長榮", "0050": "元大台灣50", "00631L": "元大台灣50正2",
+    "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
+    "2303": "聯電", "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2609": "陽明",
+    "3231": "緯創", "2308": "台達電", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息",
+    "5498": "凱崴", "2356": "英業達", "2324": "仁寶", "3034": "聯詠", "2379": "瑞昱",
+    "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
+    "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
+    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF"
+}
+
+def get_stock_name(ticker):
+    clean_tk = ticker.replace('.TW', '').replace('.TWO', '')
+    return STOCK_NAME_DICT.get(clean_tk, "個股標的")
+
 @st.cache_data(show_spinner=False, ttl=3600)
 def smart_resolve_ticker(user_input, api_key=""):
     t = user_input.strip().replace(" ", "")
@@ -83,20 +99,21 @@ def smart_resolve_ticker(user_input, api_key=""):
     name_result = t
     is_digit = bool(re.match(r'^\d+$', t))
     
-    # 內建極速防呆字典 (確保沒輸入 Key 時常用股依然秒解)
-    fast_map = {
-        "啟碁":"6285.TW", "華邦電":"2344.TW", "華邦":"2344.TW", "旺宏":"2337.TW", "台積電":"2330.TW", "聯發科":"2454.TW",
-        "鴻海":"2317.TW", "長榮":"2603.TW", "廣達":"2382.TW", "聯電":"2303.TW", "富邦金":"2881.TW",
-        "凱崴":"5498.TWO", "0050":"0050.TW", "00631L":"00631L.TW", "緯穎":"6669.TW"
-    }
-    if t in fast_map:
-        return fast_map[t], t
+    # 內建極速防呆字典
+    reverse_map = {v: k for k, v in STOCK_NAME_DICT.items() if re.match(r'^\d+$', k)}
+    if t in reverse_map:
+        tk_base = reverse_map[t]
+        # 簡易判斷上市櫃 (這裡先預設上市，後續會驗證)
+        ext = ".TWO" if tk_base in ["5498"] else ".TW" 
+        return f"{tk_base}{ext}", t
         
-    # --- 🚀 AI 智慧雙向翻譯機 (輸入中文給代碼，輸入代碼給中文) ---
+    if t in ["華邦"]: return "2344.TW", "華邦電"
+        
+    # --- 🚀 AI 智慧雙向翻譯機 ---
     if api_key:
         try:
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.5-flash") # 翻譯工作用 2.5 最快最穩
+            model = genai.GenerativeModel("gemini-2.5-flash")
             if is_digit:
                 prompt = f"請問台灣股票代碼「{t}」的公司簡稱是什麼？以及它是上市(.TW)還是上櫃(.TWO)？請嚴格以「簡稱,代碼加後綴」格式回答（例如：凱崴,5498.TWO），不要有任何其他文字。"
             else:
@@ -110,16 +127,15 @@ def smart_resolve_ticker(user_input, api_key=""):
         except:
             pass
             
-    # 降級防呆：如果 AI 查不到，或是尚未輸入 API Key
     if not ticker_result:
         if is_digit: 
-            ticker_result = f"{t}.TW" # 數字預設先給上市
+            ticker_result = f"{t}.TW" 
         else: 
-            return "", "" # 沒 Key 又打中文，直接失敗
+            return "", "" 
             
     ticker_result = ticker_result.upper().replace(" ", "")
     
-    # 雙重保險驗證 yfinance (如果 .TW 找不到，自動轉 .TWO 嘗試)
+    # 雙重保險驗證 yfinance
     try:
         if not yf.Ticker(ticker_result, session=yf_session).fast_info.get('lastPrice'):
             if ".TW" in ticker_result: ticker_result = ticker_result.replace(".TW", ".TWO")
@@ -296,8 +312,8 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 diff_val = target_val - item["now_val_ntd"]
                 action_text = ""
                 
-                # 取得 AI 解析或字典快取的中文股名
                 _, zh_name = smart_resolve_ticker(item["ticker"], api_key)
+                if not zh_name: zh_name = get_stock_name(item["ticker"])
                 
                 if item["ticker"] == "CASH":
                     unit_str = "元" if is_tw_mode else "美元"
@@ -396,7 +412,7 @@ if app_mode in ["🇹🇼 台股持股監控", "🇺🇸 美股持股監控"]:
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 6. 分頁：全球 K 線分析 (🧠 已修復閃退重置與淨空輸入框)
+# 6. 分頁：全球 K 線分析
 # ==========================================
 elif app_mode == "🔍 全球 K 線分析":
     st.title("🔍 全球金融標的技術分析")
@@ -412,7 +428,6 @@ elif app_mode == "🔍 全球 K 線分析":
         st.session_state.active_kline_ticker = default_ticker
     
     if market_choice == "自訂輸入個股": 
-        # 💡 已移除輸入框的 placeholder 預設文字
         raw_ticker_input = st.text_input("輸入欲分析的代碼或股名 (支援中文硬解)：", value=st.session_state.active_kline_ticker)
         if st.button("🔍 點擊開始解析個股數據", type="primary"):
             st.session_state.active_kline_ticker = raw_ticker_input
@@ -443,6 +458,9 @@ elif app_mode == "🔍 全球 K 線分析":
                         if k_period == "年K":
                             try: df = df.resample('YE').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
                             except: df = df.resample('Y').agg({'Open': 'first', 'High': 'max', 'Low': 'min', 'Close': 'last', 'Volume': 'sum'}).dropna()
+                        
+                        # 清除空值確保畫圖不報錯
+                        df.dropna(subset=['Close'], inplace=True)
                         
                         delta = df['Close'].diff()
                         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
@@ -510,7 +528,10 @@ elif app_mode == "🔍 全球 K 線分析":
                             "pe": pe_str, "yield": yield_str, "sector": sector_str
                         }
                     else: st.error("⚠️ 數據抓取失敗，請確認代碼後稍候重試。")
-            except: st.error("圖表載入失敗，請確認網路或輸入的名稱是否正確。")
+            except Exception as e:
+                # 💡 終極除錯顯影：印出底層錯誤代碼
+                st.error(f"圖表載入失敗，請確認網路或輸入的名稱是否正確。")
+                st.code(f"系統詳細錯誤日誌: {str(e)}")
 
     # ==========================================
     # 🤖 AI 診斷引擎 (內建 429 降檔保護)
@@ -542,14 +563,12 @@ elif app_mode == "🔍 全球 K 線分析":
                     """
                     
                     try:
-                        # 優先呼叫 3.5 旗艦模型
                         model = genai.GenerativeModel("gemini-3.5-flash")
                         response = model.generate_content(prompt)
                         st.success("✅ 成功對接 Gemini 3.5 次世代模型！")
                         st.info(response.text)
                     except Exception as ai_err:
                         err_str = str(ai_err)
-                        # 💡 攔截 429 速率限制錯誤 (免費額度用完)
                         if "429" in err_str or "quota" in err_str.lower():
                             st.warning("⚠️ Gemini 3.5 的免費額度已達上限 (每分鐘最多 5 次)。系統正自動為您切換至高額度(每分鐘15次)的 2.5 版穩定模型...")
                             try:
