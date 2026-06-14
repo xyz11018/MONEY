@@ -255,10 +255,15 @@ def save_portfolio(data):
 
 db_data = load_portfolio()
 
+# 💡 核心優化：支援平均成本結算法與清倉隱藏機制的聚合器
 def aggregate_lots(lots, targets):
     agg = {}
     has_cash = False
-    for lot in lots:
+    
+    # 確保依據日期排序，還原真實的進出時間軸以利計算平均成本
+    sorted_lots = sorted(lots, key=lambda x: str(x.get("buy_date", "")))
+    
+    for lot in sorted_lots:
         tk = str(lot.get("ticker", "")).strip().upper()
         if not tk or tk in ["NAN", "NONE"]: continue
         if tk == "CASH": has_cash = True
@@ -272,23 +277,48 @@ def aggregate_lots(lots, targets):
         try: price = float(lot.get("buy_price", 0))
         except: price = 0.0
         
-        agg[tk]["init_shares"] += shares
-        if tk == "CASH": agg[tk]["total_cost"] += shares
-        else: agg[tk]["total_cost"] += shares * price
-        
+        # 僅在買進時紀錄最早建倉日，供線圖繪製
         d = str(lot.get("buy_date", "")).strip()
-        if d and tk != "CASH":
+        if d and tk != "CASH" and shares > 0:
             if agg[tk]["earliest_buy_date"] is None or d < agg[tk]["earliest_buy_date"]:
                 agg[tk]["earliest_buy_date"] = d
-    
+                
+        if tk == "CASH":
+            agg[tk]["init_shares"] += shares
+            agg[tk]["total_cost"] += shares
+        else:
+            if shares > 0: # BUY 買進
+                agg[tk]["init_shares"] += shares
+                agg[tk]["total_cost"] += shares * price
+            elif shares < 0: # SELL 賣出平倉
+                # 依據「當時的平均成本」來扣除總成本
+                if agg[tk]["init_shares"] > 0:
+                    avg_cost = agg[tk]["total_cost"] / agg[tk]["init_shares"]
+                    agg[tk]["init_shares"] += shares # shares 是負數，等同減法
+                    agg[tk]["total_cost"] += shares * avg_cost 
+                    
+                    # 防浮點數誤差機制
+                    if agg[tk]["init_shares"] <= 0.001:
+                        agg[tk]["init_shares"] = 0.0
+                        agg[tk]["total_cost"] = 0.0
+
     if not has_cash:
         agg["CASH"] = {"ticker": "CASH", "init_shares": 0.0, "total_cost": 0.0, "target_pct": targets.get("CASH", 0.0), "earliest_buy_date": None}
 
     res = []
     for tk, v in agg.items():
+        # 💡 智慧清倉隱藏機制：如果已經賣光且目標也是0%，就不要顯示在盤面上
+        if v["init_shares"] <= 0.001 and v["target_pct"] <= 0:
+            continue
+            
         if v["init_shares"] > 0:
             v["buy_price"] = 1.0 if tk == "CASH" else (v["total_cost"] / v["init_shares"])
-        else: v["buy_price"] = 0.0
+        else: 
+            # 零股但有目標權重的狀態，重置參數避免計算錯誤
+            v["buy_price"] = 0.0
+            v["init_shares"] = 0.0
+            v["total_cost"] = 0.0
+            
         v["leverage"] = get_leverage(tk)
         res.append(v)
     return res
@@ -366,7 +396,7 @@ current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
-# 記憶體清理防呆
+# 清理記憶體遺留之錯誤代碼
 for scheme in db_data["schemes"].values():
     scheme["lots"] = [lot for lot in scheme["lots"] if str(lot.get("ticker", "")).strip().upper() not in ["", "NAN", "NONE"]]
 
@@ -376,7 +406,7 @@ for scheme in db_data["schemes"].values():
 st.sidebar.title("🏦 Quant Terminal")
 st.sidebar.markdown(f"📈 **宏觀匯率 USD/TWD：** `{current_rate:.2f}`")
 
-if yield_spread < 0: macro_color, macro_status = "#ef4444", "🚨 殖利率曲線倒掛 (全域防守)"
+if yield_spread < 0: macro_color, macro_status = "#ef4444", "🚨 殖利率曲線倒掛 (防守)"
 else: macro_color, macro_status = "#10b981", "🟢 總經擴張格局 (利差正常)"
 st.sidebar.markdown(f"""
 <div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {macro_color}; border-radius:8px; margin-bottom:12px;'>
@@ -418,7 +448,6 @@ st.sidebar.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# 🛡️ 徹底防堵 NameError：全域統一套用 API 金鑰
 if MY_API_KEY: genai.configure(api_key=MY_API_KEY)
 
 st.sidebar.markdown("---")
@@ -640,23 +669,25 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
     with tab_edit:
         st.markdown("### ⚡ 極速當日交易快速登錄 (Flash Trade Execution)")
         with st.form(key=f"quick_add_form_{market_label}"):
-            qa_cols = st.columns([2, 1.5, 1.5, 1.5, 1.5])
-            qa_tk = qa_cols[0].text_input("資產代碼 / 簡稱 (如: 00631L)", placeholder="不需打後綴")
-            qa_shares = qa_cols[1].number_input("成交數量 (Shares)", min_value=0, step=100, format="%d")
-            qa_price = qa_cols[2].number_input("成交單價 (Price)", min_value=0.0, step=1.0)
-            qa_date = qa_cols[3].date_input("交割日期 (Date)", value=datetime.date.today())
-            submit_quick_add = qa_cols[4].form_submit_button("➕ 寫入建倉日誌", use_container_width=True)
+            qa_cols = st.columns([1.2, 1.8, 1.3, 1.3, 1.4])
+            qa_action = qa_cols[0].selectbox("交易類別 (Action)", ["🟢 買進 (BUY)", "🔴 賣出 (SELL)"])
+            qa_tk = qa_cols[1].text_input("資產代碼 / 簡稱", placeholder="如: 2330 或 QQQ")
+            qa_shares = qa_cols[2].number_input("交易數量 (Shares)", min_value=1, step=100, format="%d")
+            qa_price = qa_cols[3].number_input("成交單價 (Price)", min_value=0.0, step=1.0)
+            qa_date = qa_cols[4].date_input("交割日期 (Date)", value=datetime.date.today())
+            submit_quick_add = st.form_submit_button("➕ 寫入交易總帳", use_container_width=True)
             
             if submit_quick_add:
                 if qa_tk and qa_shares > 0:
                     real_tk, resolved_name = smart_resolve_ticker(qa_tk, MY_API_KEY)
                     if real_tk:
+                        final_shares = float(qa_shares) if "BUY" in qa_action else -float(qa_shares)
                         db_data["schemes"][current_scheme_name]["lots"].append({
-                            "ticker": real_tk, "shares": float(qa_shares),
+                            "ticker": real_tk, "shares": final_shares,
                             "buy_price": float(qa_price), "buy_date": qa_date.strftime("%Y-%m-%d")
                         })
                         save_portfolio(db_data)
-                        st.success(f"✅ 交易確認已入帳：{resolved_name} ({real_tk}) {qa_shares}股！")
+                        st.success(f"✅ 交易確認已入帳：{resolved_name} ({real_tk}) {'買進' if final_shares>0 else '賣出'} {abs(final_shares)}股！")
                         st.rerun()
                     else: st.error("⚠️ 無法識別此代碼商品。")
                 else: st.warning("⚠️ 數量與標的不能為空。")
@@ -670,10 +701,11 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
             lots_df["ticker"] = lots_df["ticker"].apply(lambda x: str(x).split('.')[0] if pd.notna(x) else "")
             
-        lots_df.columns = ["資產代碼 (Ticker)", "持有數量 (Shares)", "建倉均價 (Avg. Cost)", "建倉日期 (Date)"]
+        # 🛡️ 雙向交易：修改中文標題確保寫入無誤
+        lots_df.columns = ["資產代碼 (Ticker)", "交易股數 (+買/-賣)", "成交單價 (Price)", "交割日期 (Date)"]
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
         
-        if st.button(f"📌 確認同步並寫入交割資料庫", type="primary", key=f"save_btn_{market_label}"):
+        if st.button(f"📌 確認同步並寫入雲端資料庫", type="primary", key=f"save_btn_{market_label}"):
             with st.spinner('正在同步儲存庫...'):
                 new_lots = []
                 for _, row in edited_lots.iterrows():
@@ -686,14 +718,15 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     if real_ticker:
                         new_lots.append({
                             "ticker": real_ticker,
-                            "shares": float(row["持有數量 (Shares)"] if not pd.isna(row["持有數量 (Shares)"]) else 0),
-                            "buy_price": float(row["建倉均價 (Avg. Cost)"] if not pd.isna(row["建倉均價 (Avg. Cost)"]) else 0),
-                            "buy_date": str(row["建倉日期 (Date)"]) if not pd.isna(row["建倉日期 (Date)"]) else ""
+                            "shares": float(row["交易股數 (+買/-賣)"] if not pd.isna(row["交易股數 (+買/-賣)"]) else 0),
+                            "buy_price": float(row["成交單價 (Price)"] if not pd.isna(row["成交單價 (Price)"]) else 0),
+                            "buy_date": str(row["交割日期 (Date)"]) if not pd.isna(row["交割日期 (Date)"]) else ""
                         })
                 db_data["schemes"][current_scheme_name]["lots"] = new_lots
                 save_portfolio(db_data)
                 st.success("🔒 交割總帳儲存成功！請切換分頁查看最新數據。")
 
+    # 📊 子分頁 1: 動態看盤監控盤
     with tab_monitor:
         if current_view_data:
             local_total_profit = local_total_val - local_total_cost
@@ -756,9 +789,9 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                         unit = "元" if is_tw_mode else "美元"
                         diff_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                         if diff_amt > 0: 
-                            rebalance_orders.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <b>現金儲備款</b> ➡️ 建議 <span style='color:#166534; font-weight:900; background:#dcfce7; padding:4px 10px; border-radius:6px; margin-right:12px; border:1px solid #a7f3d0;'>注資存入 (ADD)</span> <b>{fmt_money(diff_amt)} {unit}</b></li>")
+                            rebalance_orders.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <b>現金儲備部位</b> ➡️ 建議 <span style='color:#166534; font-weight:900; background:#dcfce7; padding:4px 10px; border-radius:6px; margin-right:12px; border:1px solid #a7f3d0;'>注資存入 (ADD)</span> <b>{fmt_money(diff_amt)} {unit}</b></li>")
                         else: 
-                            rebalance_orders.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <b>現金儲備款</b> ➡️ 建議 <span style='color:#991b1b; font-weight:900; background:#fee2e2; padding:4px 10px; border-radius:6px; margin-right:12px; border:1px solid #fecaca;'>部位提領 (SUB)</span> <b>{fmt_money(abs(diff_amt))} {unit}</b></li>")
+                            rebalance_orders.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <b>現金儲備部位</b> ➡️ 建議 <span style='color:#991b1b; font-weight:900; background:#fee2e2; padding:4px 10px; border-radius:6px; margin-right:12px; border:1px solid #fecaca;'>部位提領 (SUB)</span> <b>{fmt_money(abs(diff_amt))} {unit}</b></li>")
                     else:
                         price_ntd = item.get("now_p", 1) * mult
                         shares_diff = int(diff_val / price_ntd) if price_ntd > 0 else 0
@@ -821,7 +854,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     item_pnl_sign = "+" if pnl_ntd >= 0 else ""
                     
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {n_p:.2f}</div><div class='date-display'>平均建倉成本: {item.get('buy_price',0):.2f}</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>建倉成本 (Cost Basis):</div><div class='data-value'>NTD {fmt_money(item.get('net_buy_cost', 0))}</div><div class='data-label' style='margin-top:12px;'>預估淨變現市值 (Value):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>建倉總均價成本 (Cost):</div><div class='data-value'>NTD {fmt_money(item.get('net_buy_cost', 0))}</div><div class='data-label' style='margin-top:12px;'>預估淨變現市值 (Value):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>未實現淨損益 (Net Pnl):</div><div class='data-value' style='color:{item_pnl_color};'>{item_pnl_sign}{fmt_money(pnl_ntd)}</div><div class='data-label' style='margin-top:12px;'>絕對報酬率 (Return):</div><div class='data-value' style='color:{item_pnl_color};'>{item_pnl_sign}{pnl_pct:.2f}%</div>", unsafe_allow_html=True)
                     
                     is_bear = n_p < ma200_v
@@ -895,7 +928,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 if item.get("ticker") != "CASH":
                     with st.expander(f"📈 展開 {clean_name} 歷史淨利累積軌跡分析 (Profit Slicing)"):
                         tf_col, _ = st.columns([1.2, 2])
-                        tf = tf_col.radio("圖表重採樣週期：", ["日線", "週線", "月線", "年線"], horizontal=True, key=f"tf_chart_{market_label}_{item.get('ticker')}")
+                        tf = tf_col.radio("圖表週期：", ["日線", "週線", "月線", "年線"], horizontal=True, key=f"tf_chart_{market_label}_{item.get('ticker')}")
                         
                         hist_close = item.get("history_close", pd.Series(dtype=float))
                         buy_date = item.get("earliest_buy_date")
@@ -934,22 +967,19 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                                 fig_pnl.update_traces(line=dict(color=curve_color, width=2.5), fill='tozeroy', fillcolor=f"rgba({ '16,185,129' if curve_color=='#10b981' else '239,68,68' }, 0.08)", hovertemplate=ht)
                                 fig_pnl.update_layout(height=300, margin=dict(t=15, b=15, l=15, r=15), yaxis_title=y_axis_label, xaxis_title="", hovermode="x unified")
                                 
-                                # 🛡️ 防碰撞四重複合 Key
                                 st.plotly_chart(fig_pnl, use_container_width=True, config={'displayModeBar': False}, key=f"pnl_chart_{market_label}_{item.get('ticker')}_{tf}")
-                            else: st.info("該標的在交割日期後無有效報價，無法進行回測追蹤。")
+                            else: st.info("該資產於指定建倉日期後無有效價格，無法回推。")
                         else: st.info("無有效歷史價格陣列。")
 
                 st.markdown("<hr>", unsafe_allow_html=True)
 
             st.markdown("---")
             st.subheader("🤖 AI 量化戰略兵推 (Quant Intelligence)")
-            st.info("💡 點擊下方按鈕，AI 將自動對持倉偏離與技術指標(均線/KD/RSI)進行全域動態對沖推演。")
-            
-            # 🛡️ 綁定獨立 Button ID 防碰撞
+            st.info("💡 點擊下方按鈕，AI 首席分析大腦將綜合審視您的「長短天期美債利差倒掛狀態」、「50MA/200MA均線交叉」與「倉位偏離度」，下達頂級決策邏輯。")
             if st.button(f"✨ 啟動 Gemini 演算法兵推", key=f"ai_btn_{market_label}", type="primary", use_container_width=True):
                 if not MY_API_KEY: st.warning("⚠️ 系統連線失敗：請先配置您的 Gemini API Key。")
                 else:
-                    with st.spinner("🧠 神經網絡戰略推演中 (Connecting to Quant Engine...)"):
+                    with st.spinner("🧠 機構級神經網絡交易模型推演中..."):
                         portfolio_summary = f"【美債 10Y-3M 利差狀態】: {yield_spread:+.2f}% ({'倒掛警戒中' if yield_spread < 0 else '擴張格局正軌'})\n\n"
                         for item in current_view_data:
                             tk_name = item.get('ticker', '').split('.')[0]
@@ -1068,8 +1098,6 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         delta = df['Close'].diff()
                         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
                         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-                        
-                        # 🛡️ 徹底修復：補上 RS 的定義，解決 NameError
                         rs = gain / loss
                         df['RSI'] = 100 - (100 / (1 + rs))
                         
@@ -1123,14 +1151,12 @@ elif app_mode == "🔍 全球宏觀市場終端":
                             fig.update_yaxes(showticklabels=False, row=2, col=1)
                             
                         fig.update_layout(xaxis_rangeslider_visible=False, height=600, template="plotly_white", margin=dict(t=30, b=10, l=10, r=10), hovermode="x unified")
-                        # 🛡️ 綁定獨立專屬 ID 徹底防止繪圖引擎碰撞
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"terminal_stock_chart_{clean_title}")
 
                         tab1, tab2 = st.tabs(["📈 AI 神經網絡戰略分析", "📰 全球市場事件與情緒掃描"])
                         
                         with tab1:
                             st.markdown("### 🤖 標的資產量化解析 (AI Analysis)")
-                            # 🛡️ 綁定獨立 Button ID
                             if st.button("✨ 啟動 Gemini 神經網絡推演", key=f"ai_btn_{clean_title}", type="secondary", use_container_width=True):
                                 if not MY_API_KEY: st.warning("⚠️ 請先於系統後台掛載 Gemini API Key。")
                                 else:
@@ -1158,7 +1184,6 @@ elif app_mode == "🔍 全球宏觀市場終端":
                                     news_text_for_ai += f"標題: {title}\n來源: {publisher}\n\n"
                                 
                                 st.markdown("---")
-                                # 🛡️ 綁定獨立 Button ID
                                 if st.button("✨ 讓 Gemini 總結市場多空動能情緒", key=f"news_ai_btn_{clean_title}", type="primary", use_container_width=True):
                                     if not MY_API_KEY: st.warning("⚠️ 系統連線失敗：未偵測到 API Key。")
                                     else:
