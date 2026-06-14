@@ -215,20 +215,7 @@ def load_portfolio():
             with open(DB_FILE, "r", encoding="utf-8") as f: 
                 data = json.load(f)
                 if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
-                for s_name, s_data in data.get("schemes", {}).items():
-                    if "assets" in s_data and "lots" not in s_data:
-                        s_data["lots"], s_data["targets"] = [], {}
-                        for a in s_data["assets"]:
-                            tk = a.get("ticker", "")
-                            if tk:
-                                clean_tk = tk.split('.')[0]
-                                s_data["lots"].append({
-                                    "ticker": tk, "shares": a.get("init_shares", 0),
-                                    "buy_price": a.get("buy_price", a.get("init_price", 0)), "buy_date": a.get("buy_date", "")
-                                })
-                                s_data["targets"][clean_tk] = a.get("target_pct", 0.0)
-                        del s_data["assets"]
-                return data
+                if "schemes" in data: return data
         except: pass
     return default_data
 
@@ -274,6 +261,59 @@ twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
+
+# ==========================================
+# 🎯 永豐專屬精算引擎 (修復 KeyError)
+# ==========================================
+def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
+    base_tk = item['ticker'].split('.')[0]
+    
+    # 💡 修正 KeyError：自己算 gross_buy_amt，不依賴外部還沒建立的 'asset_cost' 欄位
+    shares = item.get('init_shares', 0)
+    avg_buy_p = item.get('buy_price', 0)
+    current_p = item.get('now_p', 0)
+    gross_buy_amt = shares * avg_buy_p
+    
+    if item['ticker'].startswith("^") or item['ticker'] == "CASH":
+        return gross_buy_amt, (current_p * fx_rate * shares) if item['ticker'] != "CASH" else shares, 0, 0, 0, 0
+    
+    tw_standard_fee_rate = 0.001425
+    tw_discount = 0.2
+    tw_min_fee = 1.0
+    
+    us_fee_rate = 0.0018
+    us_min_fee = 3.0
+    
+    is_etf = len(base_tk) == 5 or len(base_tk) == 6 or base_tk.startswith('00')
+    tw_tax_rate = 0.001 if is_etf else 0.003
+
+    if is_tw_market:
+        est_buy_fee = max(tw_min_fee, gross_buy_amt * tw_standard_fee_rate * tw_discount) if shares > 0 else 0
+        net_buy_cost_curr = gross_buy_amt + est_buy_fee
+    else:
+        est_buy_fee = max(us_min_fee, gross_buy_amt * us_fee_rate) if shares > 0 else 0
+        net_buy_cost_curr = gross_buy_amt + est_buy_fee
+
+    gross_sell_amt = shares * current_p
+    if is_tw_market:
+        est_sell_fee = max(tw_min_fee, gross_sell_amt * tw_standard_fee_rate * tw_discount) if shares > 0 else 0
+        est_sell_tax = gross_sell_amt * tw_tax_rate
+        net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
+    else:
+        est_sell_fee = max(us_min_fee, gross_sell_amt * us_fee_rate) if shares > 0 else 0
+        est_sell_tax = 0.0
+        net_sell_amt_curr = gross_sell_amt - est_sell_fee
+        
+    mult = 1.0 if is_tw_market else fx_rate
+    net_buy_cost_ntd = net_buy_cost_curr * mult
+    net_sell_amt_ntd = net_sell_amt_curr * mult
+    total_estimated_fees_ntd = (est_buy_fee + est_sell_fee) * mult
+    total_estimated_tax_ntd = est_sell_tax * mult
+    
+    net_pnl_ntd = net_sell_amt_ntd - net_buy_cost_ntd
+    net_pnl_pct = (net_pnl_ntd / net_buy_cost_ntd * 100) if net_buy_cost_ntd > 0 else 0
+    
+    return net_buy_cost_ntd, net_sell_amt_ntd, total_estimated_fees_ntd, total_estimated_tax_ntd, net_pnl_ntd, net_pnl_pct
 
 # ==========================================
 # 📊 左側邊欄：宏觀與市場情緒指標
@@ -325,63 +365,6 @@ app_mode = st.sidebar.radio("模組導覽 (Modules)：", ["🏠 總體財富總�
 st.sidebar.markdown("---")
 
 # ==========================================
-# 🎯 永豐專屬精算引擎 (扣除買賣手續費與稅)
-# ==========================================
-def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
-    base_tk = item['ticker'].split('.')[0]
-    
-    # 現金與大盤不扣費
-    if item['ticker'].startswith("^") or item['ticker'] == "CASH":
-        gross_cost = item['asset_cost']
-        current_val = item['now_val_ntd']
-        return gross_cost, current_val, 0, 0, 0, 0
-
-    shares = item['init_shares']
-    avg_buy_p = item['buy_price'] 
-    current_p = item['now_p']
-    
-    # 永豐金證券預設：台股電子單 2折，低消 1 元 / 美股複委託 0.18%，低消 3 美金
-    tw_standard_fee_rate = 0.001425
-    tw_discount = 0.2
-    tw_min_fee = 1.0
-    
-    us_fee_rate = 0.0018
-    us_min_fee = 3.0
-    
-    is_etf = len(base_tk) == 5 or len(base_tk) == 6 or base_tk.startswith('00')
-    tw_tax_rate = 0.001 if is_etf else 0.003
-
-    gross_buy_amt = shares * avg_buy_p
-    if is_tw_market:
-        est_buy_fee = max(tw_min_fee, gross_buy_amt * tw_standard_fee_rate * tw_discount)
-        net_buy_cost_curr = gross_buy_amt + est_buy_fee
-    else:
-        est_buy_fee = max(us_min_fee, gross_buy_amt * us_fee_rate)
-        net_buy_cost_curr = gross_buy_amt + est_buy_fee
-
-    gross_sell_amt = shares * current_p
-    if is_tw_market:
-        est_sell_fee = max(tw_min_fee, gross_sell_amt * tw_standard_fee_rate * tw_discount)
-        est_sell_tax = gross_sell_amt * tw_tax_rate
-        net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
-    else:
-        est_sell_fee = max(us_min_fee, gross_sell_amt * us_fee_rate)
-        est_sell_tax = 0.0
-        net_sell_amt_curr = gross_sell_amt - est_sell_fee
-        
-    mult = 1.0 if is_tw_market else fx_rate
-    net_buy_cost_ntd = net_buy_cost_curr * mult
-    net_sell_amt_ntd = net_sell_amt_curr * mult
-    total_estimated_fees_ntd = (est_buy_fee + est_sell_fee) * mult
-    total_estimated_tax_ntd = est_sell_tax * mult
-    
-    net_pnl_ntd = net_sell_amt_ntd - net_buy_cost_ntd
-    net_pnl_pct = (net_pnl_ntd / net_buy_cost_ntd * 100) if net_buy_cost_ntd > 0 else 0
-    
-    return net_buy_cost_ntd, net_sell_amt_ntd, total_estimated_fees_ntd, total_estimated_tax_ntd, net_pnl_ntd, net_pnl_pct
-
-
-# ==========================================
 # 5. 主功能：總體財富總覽 (Dashboard)
 # ==========================================
 if app_mode == "🏠 總體財富總覽":
@@ -425,11 +408,8 @@ if app_mode == "🏠 總體財富總覽":
                         yield_pct = 0.0
                     else: 
                         now_val_ntd = now_p * rate * asset.get("init_shares", 0)
-                        
-                        # 呼叫精算引擎取得淨成本
                         net_cost, _, _, _, _, _ = calculate_net_pnl_stats({**asset, "now_p": now_p}, is_tw, rate)
                         asset_cost_ntd = net_cost
-                        
                         try: yield_pct = float(yf.Ticker(asset["ticker"], session=yf_session).info.get('dividendYield', 0) or 0)
                         except: yield_pct = 0.0
                         
@@ -556,12 +536,10 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                 date_str = m_data["date"]
                 lev = asset.get("leverage", 1.0)
                 
-                # 呼叫精算引擎取得淨成本與淨獲利
                 net_cost, net_val, total_fees, total_tax, net_pnl, net_pnl_pct = calculate_net_pnl_stats(
                     {**asset, "now_p": now_p}, is_tw_mode, current_rate
                 )
                 
-                # 這裡保留原始市值作為權重分母，以維持顯示統一
                 gross_now_val = now_p * (1.0 if is_tw_mode else current_rate) * asset.get("init_shares", 0) if asset["ticker"] != "CASH" else asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                 
                 local_total_val += gross_now_val
