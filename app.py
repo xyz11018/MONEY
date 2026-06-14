@@ -29,7 +29,7 @@ yf_session.headers.update({
 })
 
 # ==========================================
-# 1. 頁面配置與現代化 SaaS 級 CSS
+# 1. 頁面配置與現代化 SaaS 級 CSS (極致美化版)
 # ==========================================
 st.set_page_config(layout="wide", page_title="機構級量化決策終端", page_icon="🏦")
 
@@ -41,45 +41,66 @@ def fmt_money(val, decimals=0):
     return f"{float(val):,.{decimals}f}"
 
 st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-    html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
-    
-    .market-header { 
-        padding: 12px 18px; border-radius: 6px; font-weight: 800; 
-        font-size: 1.15rem; color: #f8fafc !important;
-        background: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .tw-market { border-left: 5px solid #059669; }
-    .us-market { border-left: 5px solid #2563eb; }
-    .global-market { border-left: 5px solid #8b5cf6; }
-    
-    .pro-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); height: 100%; }
-    .kpi-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; }
-    
-    .ticker-display { font-size: 1.6rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
-    .stock-name-display { font-size: 0.9rem; color: #64748b; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
-    .price-display { font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-top: 4px; }
-    .date-display { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; font-weight: 600; text-transform: uppercase; }
-    
-    .data-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .data-value { font-size: 1.05rem; font-weight: 800; color: #1e293b; }
-    
-    .badge-buy { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #dcfce7; color: #166534; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
-    .badge-sell { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #fee2e2; color: #991b1b; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
-    .badge-hold { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
-    
-    .stNumberInput input { font-weight: 800 !important; color: #0f172a !important; }
-    .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid #0f172a; padding: 15px; border-radius: 6px; margin-top: 15px; margin-bottom: 25px; }
-    
-    .modebar { display: none !important; }
-    hr { border-color: #e2e8f0; margin: 2rem 0; }
-    
-    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f8fafc; border-radius: 6px 6px 0 0; padding: 0 20px; color: #64748b; font-weight: 700;}
-    .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: 3px solid #10b981; }
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
+
+.market-header { 
+    padding: 14px 20px; border-radius: 8px; font-weight: 900; 
+    font-size: 1.25rem; color: #ffffff !important;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    text-transform: uppercase; letter-spacing: 1px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    margin-bottom: 24px;
+}
+.tw-market { border-left: 6px solid #10b981; }
+.us-market { border-left: 6px solid #3b82f6; }
+.global-market { border-left: 6px solid #8b5cf6; }
+
+/* 懸浮動態卡片設計 */
+.pro-card { 
+    background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; 
+    padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%;
+    transition: all 0.2s ease-in-out;
+}
+.pro-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08);
+    border-color: #cbd5e1;
+}
+
+.kpi-card { 
+    background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; 
+    padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); 
+    display: flex; flex-direction: column; justify-content: center;
+    transition: all 0.2s ease;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 12px -2px rgba(0,0,0,0.06); }
+
+/* 文字排版 */
+.ticker-display { font-size: 1.7rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
+.stock-name-display { font-size: 0.95rem; color: #64748b; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
+.price-display { font-size: 1.35rem; font-weight: 800; color: #0f172a; margin-top: 4px; }
+.date-display { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; font-weight: 600; }
+
+.data-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; font-weight: 700; letter-spacing: 0.5px; }
+.data-value { font-size: 1.15rem; font-weight: 800; color: #1e293b; }
+
+/* 專業交易徽章 */
+.badge-buy { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #dcfce7; color: #166534; font-weight: 800; font-size: 0.85rem; border: 1px solid #bbf7d0; }
+.badge-sell { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #fee2e2; color: #991b1b; font-weight: 800; font-size: 0.85rem; border: 1px solid #fecaca; }
+.badge-hold { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+
+.action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 6px solid #0f172a; padding: 20px; border-radius: 8px; margin-top: 15px; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+.modebar { display: none !important; }
+hr { border-color: #e2e8f0; margin: 2rem 0; }
+
+/* Tabs 優化 */
+.stTabs [data-baseweb="tab-list"] { gap: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 0px;}
+.stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 24px; color: #64748b; font-weight: 700; border: none;}
+.stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: none !important; }
+</style>
 """, unsafe_allow_html=True)
 
 DB_FILE = "portfolio_db.json"
@@ -264,47 +285,41 @@ vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
 # ==========================================
-# 🎯 永豐專屬精算引擎 (SinoPac Brokerage Net PnL)
+# 🎯 永豐專屬精算引擎
 # ==========================================
 def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
     base_tk = item['ticker'].split('.')[0]
     shares = item.get('init_shares', 0)
     avg_buy_p = item.get('buy_price', 0)
     current_p = item.get('now_p', 0)
-    
     gross_buy_amt = shares * avg_buy_p
     
     if item['ticker'].startswith("^") or item['ticker'] == "CASH":
         return gross_buy_amt, (current_p * fx_rate * shares) if item['ticker'] != "CASH" else shares, 0, 0, 0, 0
     
-    # 💡 永豐大戶投專屬費率：台股電子單 2折/低消1元。美股 0.18%/低消3美
     tw_standard_fee_rate = 0.001425
     tw_discount = 0.2
     tw_min_fee = 1.0
     us_fee_rate = 0.0018
     us_min_fee = 3.0
     
-    # 💡 證交稅判斷：ETF(含正2反1) 為 0.1%，一般股票 0.3%
     is_etf = len(base_tk) == 5 or len(base_tk) == 6 or base_tk.startswith('00')
     tw_tax_rate = 0.001 if is_etf else 0.003
 
-    # 計算真實買入總成本
     if is_tw_market:
-        est_buy_fee = max(tw_min_fee, int(round(gross_buy_amt * tw_standard_fee_rate * tw_discount))) if shares > 0 else 0
+        est_buy_fee = max(tw_min_fee, gross_buy_amt * tw_standard_fee_rate * tw_discount) if shares > 0 else 0
         net_buy_cost_curr = gross_buy_amt + est_buy_fee
     else:
         est_buy_fee = max(us_min_fee, gross_buy_amt * us_fee_rate) if shares > 0 else 0
         net_buy_cost_curr = gross_buy_amt + est_buy_fee
 
-    # 計算若現在賣出的真實淨變現市值
     gross_sell_amt = shares * current_p
     if is_tw_market:
-        est_sell_fee = max(tw_min_fee, int(round(gross_sell_amt * tw_standard_fee_rate * tw_discount))) if shares > 0 else 0
-        est_sell_tax = int(round(gross_sell_amt * tw_tax_rate)) if shares > 0 else 0
+        est_sell_fee = max(tw_min_fee, gross_sell_amt * tw_standard_fee_rate * tw_discount) if shares > 0 else 0
+        est_sell_tax = gross_sell_amt * tw_tax_rate
         net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
     else:
         est_sell_fee = max(us_min_fee, gross_sell_amt * us_fee_rate) if shares > 0 else 0
-        # 美股賣出有微小 SEC Fee 與 TAF 規費
         est_sell_tax = (gross_sell_amt * 0.0000278) + min(shares * 0.000166, 8.32) if shares > 0 else 0
         net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
         
@@ -325,6 +340,7 @@ def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
 st.sidebar.title("🏦 量化決策終端")
 st.sidebar.markdown(f"📈 **匯率 USD/TWD：** `{current_rate:.2f}`")
 
+# 清理 NAN
 for scheme in db_data["schemes"].values():
     scheme["lots"] = [lot for lot in scheme["lots"] if str(lot.get("ticker", "")).strip().upper() not in ["", "NAN", "NONE"]]
 
@@ -334,9 +350,9 @@ elif current_vix >= 20: vix_color, vix_status = "#f59e0b", "波動加劇"
 else: vix_color, vix_status = "#64748b", "市場穩定"
 
 st.sidebar.markdown(f"""
-<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {vix_color}; border-radius:6px; margin-bottom:10px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>📉 VIX 恐慌指數</div>
-    <div style='color:#0f172a; font-size:1.2rem; font-weight:900;'>{current_vix:.2f} <span style='font-size:0.85rem; color:{vix_color}; font-weight:700;'>{vix_status}</span></div>
+<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {vix_color}; border-radius:8px; margin-bottom:12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px; text-transform:uppercase;'>📉 VIX 恐慌指數</div>
+    <div style='color:#0f172a; font-size:1.3rem; font-weight:900;'>{current_vix:.2f} <span style='font-size:0.85rem; color:{vix_color}; font-weight:700;'>{vix_status}</span></div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -347,17 +363,17 @@ elif cnn_val <= 30: cnn_color, cnn_status = "#10b981", "恐懼 (找買點)"
 else: cnn_color, cnn_status = "#64748b", "市場中立"
 
 st.sidebar.markdown(f"""
-<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {cnn_color}; border-radius:6px; margin-bottom:10px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>🦅 CNN 恐懼與貪婪</div>
-    <div style='color:#0f172a; font-size:1.2rem; font-weight:900;'>{cnn_val} <span style='font-size:0.85rem; color:{cnn_color}; font-weight:700;'>{cnn_status}</span></div>
+<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {cnn_color}; border-radius:8px; margin-bottom:12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px; text-transform:uppercase;'>🦅 CNN 恐懼與貪婪</div>
+    <div style='color:#0f172a; font-size:1.3rem; font-weight:900;'>{cnn_val} <span style='font-size:0.85rem; color:{cnn_color}; font-weight:700;'>{cnn_status}</span></div>
 </div>
 """, unsafe_allow_html=True)
 
 tw_light_signal = "🟢 綠燈 (31分)"  
 st.sidebar.markdown(f"""
-<div style='padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #10b981; border-radius:6px; margin-bottom:10px;'>
-    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:2px;'>🚦 景氣對策信號 (台股)</div>
-    <div style='color:#0f172a; font-size:1.0rem; font-weight:900;'>{tw_light_signal}</div>
+<div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #10b981; border-radius:8px; margin-bottom:12px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);'>
+    <div style='color:#64748b; font-size:0.8rem; font-weight:700; margin-bottom:4px; text-transform:uppercase;'>🚦 景氣對策信號 (台股)</div>
+    <div style='color:#0f172a; font-size:1.1rem; font-weight:900;'>{tw_light_signal}</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -372,7 +388,7 @@ st.sidebar.markdown("---")
 # 5. 主功能：總體財富總覽 (Dashboard)
 # ==========================================
 if app_mode == "🏠 總體財富總覽":
-    st.markdown("<h1>🏠 總體財富總覽 (Wealth Dashboard)</h1>", unsafe_allow_html=True)
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);'>🏠 總體財富總覽 (Global Wealth Dashboard)</div>", unsafe_allow_html=True)
     
     with st.expander("🎯 設定全球財務自由目標 (Global Financial Goals)"):
         g_cols = st.columns(2)
@@ -435,7 +451,6 @@ if app_mode == "🏠 總體財富總覽":
     if not combined_hist_df.empty:
         combined_hist_df = combined_hist_df.ffill()
         combined_hist_df['Total'] = combined_hist_df.sum(axis=1) + cash_total_ntd
-        
         ytd_date = str(datetime.datetime.now().year) + "-01-01"
         try: val_ytd = combined_hist_df['Total'].loc[ytd_date:].iloc[0]
         except: val_ytd = combined_hist_df['Total'].iloc[0]
@@ -455,49 +470,49 @@ if app_mode == "🏠 總體財富總覽":
 
     st.markdown("### 🎯 總體財務自由目標與績效")
     g1, g2, g3, g4 = st.columns(4)
-    g1.markdown(f"<div class='kpi-card' style='border-left: 5px solid #8b5cf6;'><div class='data-label'>設定目標金額 ({target_years}年)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(target_amount)}</div></div>", unsafe_allow_html=True)
-    g2.markdown(f"<div class='kpi-card' style='border-left: 5px solid #ef4444;'><div class='data-label'>目前資金缺口 (Shortfall)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
-    g3.markdown(f"<div class='kpi-card' style='border-left: 5px solid #10b981;'><div class='data-label'>需達成年化報酬率 (Req. CAGR)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
-    g4.markdown(f"<div class='kpi-card' style='border-left: 5px solid #3b82f6;'><div class='data-label'>真實累積報酬率 (Cum. Return)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g1.markdown(f"<div class='kpi-card' style='border-top: 4px solid #8b5cf6;'><div class='data-label'>設定目標金額 ({target_years}年)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(target_amount)}</div></div>", unsafe_allow_html=True)
+    g2.markdown(f"<div class='kpi-card' style='border-top: 4px solid #ef4444;'><div class='data-label'>目前資金缺口 (Shortfall)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
+    g3.markdown(f"<div class='kpi-card' style='border-top: 4px solid #10b981;'><div class='data-label'>需達成年化報酬率 (Req. CAGR)</div><div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
+    pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
+    g4.markdown(f"<div class='kpi-card' style='border-top: 4px solid {pnl_c_global};'><div class='data-label'>真實累積報酬率 (Cum. Return)</div><div style='font-size:1.8rem; font-weight:900; color:{pnl_c_global};'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("### 📊 全球資產板塊概況 (Global AUM)")
     
     kpi_html = f"""
     <div style='display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;'>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #8b5cf6; background-color:#f8fafc;'>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #8b5cf6; background-color:#f8fafc;'>
             <div class='data-label' style='color:#475569;'>🌍 全球總投資市值 (Total)</div>
             <div style='font-size:2.2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_aum_ntd)}</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #059669;'>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #10b981;'>
             <div class='data-label'>🇹🇼 台股總部位 (TW Market)</div>
             <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(tw_aum_ntd)}</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #2563eb;'>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #3b82f6;'>
             <div class='data-label'>🇺🇸 美股總部位 (US Market)</div>
             <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(us_aum_ntd)}</div>
         </div>
     </div>
     <div style='display:flex; gap:16px; margin-bottom:24px; flex-wrap:wrap;'>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #10b981;'>
+        <div class='kpi-card' style='flex:1; min-width:200px;'>
             <div class='data-label'>今年報酬率 (YTD Return)</div>
             <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_ytd >=0 else "#ef4444"};'>{return_ytd:+.2f}%</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #f59e0b;'>
+        <div class='kpi-card' style='flex:1; min-width:200px;'>
             <div class='data-label'>近一年報酬 (1-Year TWR)</div>
             <div style='font-size:2rem; font-weight:900; color:{"#10b981" if return_1y >=0 else "#ef4444"};'>{return_1y:+.2f}%</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #06b6d4;'>
+        <div class='kpi-card' style='flex:1; min-width:200px;'>
             <div class='data-label'>預估年被動收入 (Est. Div)</div>
             <div style='font-size:2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_div_ntd)}</div>
         </div>
     </div>
-    <div style='font-size:0.85rem; color:#64748b; margin-top:-10px; margin-bottom:20px;'>💡 註：ETF 的經理費/保管費 (內扣費用) 由投信公司每日於淨值中扣除，您畫面上看到的即時市值即為扣除管理費後的真實淨值。</div>
     """
     st.markdown(kpi_html, unsafe_allow_html=True)
     
     if not combined_hist_df.empty:
-        st.markdown(f'<div class="market-header global-market">📈 全球資產歷史走勢模擬 (Global Equity Curve)</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="market-header global-market" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-left-color: #8b5cf6;">📈 全球資產歷史走勢模擬 (Global Equity Curve)</div>', unsafe_allow_html=True)
         chart_period = st.radio("線圖週期：", ["日線 (Daily)", "週線 (Weekly)", "月線 (Monthly)"], horizontal=True)
         
         chart_df = combined_hist_df[['Total']].copy()
@@ -517,7 +532,7 @@ if app_mode == "🏠 總體財富總覽":
         st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False})
 
 # ==========================================
-# 5. 主功能：個別量化部位管理 (TW / US) -> 💡 三分頁架構
+# 5. 主功能：個別量化部位管理 (TW / US)
 # ==========================================
 elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部位管理"]:
     is_tw_mode = (app_mode == "🇹🇼 台股量化部位管理")
@@ -525,40 +540,39 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
     current_scheme_name = "🎯 台股主力配置" if is_tw_mode else "🎯 美股主力配置"
     currency_symbol = "NTD" if is_tw_mode else "USD"
     
-    st.markdown(f'<h1>💼 {market_label} 量化部位管理 (Portfolio)</h1>', unsafe_allow_html=True)
+    st.markdown(f'<div class="market-header {"tw-market" if is_tw_mode else "us-market"}">💼 {market_label} 量化部位管理 (Portfolio)</div>', unsafe_allow_html=True)
     
     tab_monitor, tab_edit, tab_inject = st.tabs(["📊 動態量化監控 (Live Dashboard)", "📓 歷史建倉日誌 (Trade Lots)", "💰 新資金佈局 (Capital Injection)"])
     
     # --- 前置運算：為監控盤與加碼盤準備數據 ---
     current_view_data = []
     local_total_val, local_total_cost = 0, 0
-    target_portfolio = aggregate_lots(db_data["schemes"][current_scheme_name]["lots"], db_data["schemes"][current_scheme_name]["targets"])
+    target_portfolio = aggregate_lots(db_data["schemes"][current_scheme_name].get("lots", []), db_data["schemes"][current_scheme_name].get("targets", {}))
     
     if target_portfolio:
-        for asset in target_portfolio:
-            m_data = fetch_market_data(asset.get("ticker", ""))
-            if m_data and m_data.get("price", 0) > 0:
-                now_p = m_data.get("price", 0)
-                date_str = m_data.get("date", "")
-                
-                # 💡 呼叫精算引擎取得淨成本與淨獲利
-                net_cost, net_val, total_fees, total_tax, net_pnl, net_pnl_pct = calculate_net_pnl_stats(
-                    {**asset, "now_p": now_p}, is_tw_mode, current_rate
-                )
-                
-                # 這裡保留原始市值作為權重分母，以維持顯示統一
-                gross_now_val = now_p * (1.0 if is_tw_mode else current_rate) * asset.get("init_shares", 0) if asset["ticker"] != "CASH" else asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
-                
-                local_total_val += gross_now_val
-                local_total_cost += net_cost
-                
-                current_view_data.append({
-                    **asset, "now_p": now_p, "date": date_str, 
-                    "now_val_ntd": gross_now_val, "net_buy_cost": net_cost, "net_real_val": net_val,
-                    "net_pnl": net_pnl, "net_pnl_pct": net_pnl_pct, "total_fees": total_fees, "total_tax": total_tax,
-                    "drawdown": m_data.get("drawdown", 0), "ma200": m_data.get("ma200", 0), "bias": m_data.get("bias", 0),
-                    "rsi": m_data.get("rsi", 50), "kd_k": m_data.get("kd_k", 50)
-                })
+        with st.spinner(f"🔄 正在同步雲端報價與量化指標..."):
+            for asset in target_portfolio:
+                m_data = fetch_market_data(asset.get("ticker", ""))
+                if m_data and m_data.get("price", 0) > 0:
+                    now_p = m_data.get("price", 0)
+                    date_str = m_data.get("date", "")
+                    
+                    net_cost, net_val, total_fees, total_tax, net_pnl, net_pnl_pct = calculate_net_pnl_stats(
+                        {**asset, "now_p": now_p}, is_tw_mode, current_rate
+                    )
+                    
+                    gross_now_val = now_p * (1.0 if is_tw_mode else current_rate) * asset.get("init_shares", 0) if asset["ticker"] != "CASH" else asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
+                    
+                    local_total_val += gross_now_val
+                    local_total_cost += net_cost
+                    
+                    current_view_data.append({
+                        **asset, "now_p": now_p, "date": date_str, 
+                        "now_val_ntd": gross_now_val, "net_buy_cost": net_cost, "net_real_val": net_val,
+                        "net_pnl": net_pnl, "net_pnl_pct": net_pnl_pct, "total_fees": total_fees, "total_tax": total_tax,
+                        "drawdown": m_data.get("drawdown", 0), "ma200": m_data.get("ma200", 0), "bias": m_data.get("bias", 0),
+                        "rsi": m_data.get("rsi", 50), "kd_k": m_data.get("kd_k", 50)
+                    })
 
     with tab_edit:
         st.markdown("### ⚡ 快速新增當日建倉 (Quick Add Trade)")
@@ -584,10 +598,8 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                         save_portfolio(db_data)
                         st.success(f"✅ 成功寫入：{resolved_name} ({real_tk}) {qa_shares}股！")
                         st.rerun()
-                    else:
-                        st.error("⚠️ 無法識別該標的，請重新輸入。")
-                else:
-                    st.warning("⚠️ 請輸入標的名稱與股數。")
+                    else: st.error("⚠️ 無法識別該標的，請重新輸入。")
+                else: st.warning("⚠️ 請輸入標的名稱與股數。")
                     
         st.markdown("<hr style='margin: 1rem 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
         
@@ -595,15 +607,12 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
         st.info("💡 **提示**：可在此處修改歷史紀錄，或勾選左側核取方塊按 `Delete` 刪除。標的代碼會智慧隱藏後綴。")
         
         lots_df = pd.DataFrame(db_data["schemes"][current_scheme_name].get("lots", []))
-        if lots_df.empty: 
-            lots_df = pd.DataFrame(columns=["ticker", "shares", "buy_price", "buy_date"])
+        if lots_df.empty: lots_df = pd.DataFrame(columns=["ticker", "shares", "buy_price", "buy_date"])
         else: 
             lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
-            # 💡 自動去除 .TW 尾碼，讓畫面乾淨
-            lots_df["ticker"] = lots_df["ticker"].apply(lambda x: str(x).replace('.TW', '').replace('.TWO', '') if pd.notna(x) else "")
+            lots_df["ticker"] = lots_df["ticker"].apply(lambda x: str(x).split('.')[0] if pd.notna(x) else "")
             
         lots_df.columns = ["標的(Ticker)", "股數(Shares)", "買進均價(Price)", "日期(YYYY-MM-DD)"]
-        
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
         
         if st.button(f"📌 儲存 {market_label} 建倉日誌", type="primary"):
@@ -612,7 +621,7 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                 for _, row in edited_lots.iterrows():
                     tk_raw = row["標的(Ticker)"]
                     if pd.isna(tk_raw): continue
-                    tk = str(tk_raw).strip().upper().replace('.TW', '').replace('.TWO', '')
+                    tk = str(tk_raw).strip().upper()
                     if not tk or tk in ["NAN", "NONE"]: continue
                     
                     real_ticker, _ = smart_resolve_ticker(tk, api_key)
@@ -623,7 +632,6 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                             "buy_price": float(row["買進均價(Price)"] if not pd.isna(row["買進均價(Price)"]) else 0),
                             "buy_date": str(row["日期(YYYY-MM-DD)"]) if not pd.isna(row["日期(YYYY-MM-DD)"]) else ""
                         })
-                
                 db_data["schemes"][current_scheme_name]["lots"] = new_lots
                 save_portfolio(db_data)
                 st.success("🔒 儲存成功！請切換至【📊 動態量化監控】分頁查看最新數據。")
@@ -637,34 +645,29 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
             pnl_s = "+" if local_cumulative_ret >= 0 else ""
             
             st.markdown(f"""
-            <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px;'>
-                <div class="market-header { 'tw-market' if is_tw_mode else 'us-market' }" style="margin-bottom:0;">📊 動態量化監控盤 (Live Dashboard)</div>
-            </div>
             <div style='display:flex; gap: 16px; margin-bottom: 24px; flex-wrap:wrap;'>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #3b82f6;'>
+                <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #3b82f6;'>
                     <div class='data-label'>投入總成本 (Total Cost)</div>
                     <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(local_total_cost)}</div>
                 </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid #8b5cf6;'>
+                <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #8b5cf6;'>
                     <div class='data-label'>目前總市值 (Total Value)</div>
                     <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(local_total_val)}</div>
                 </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid {pnl_c};'>
-                    <div class='data-label'>未實現總獲利 (Net Profit)</div>
+                <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid {pnl_c};'>
+                    <div class='data-label'>未實現總獲利 (Total Profit)</div>
                     <div style='font-size:1.8rem; font-weight:900; color:{pnl_c};'>{pnl_s}NTD {fmt_money(local_total_profit)}</div>
                 </div>
-                <div class='kpi-card' style='flex:1; min-width:200px; border-left: 5px solid {pnl_c};'>
+                <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid {pnl_c};'>
                     <div class='data-label'>總報酬率 (Total ROI)</div>
                     <div style='font-size:1.8rem; font-weight:900; color:{pnl_c};'>{pnl_s}{local_cumulative_ret:.2f}%</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            st.markdown("<div style='font-size:0.85rem; color:#64748b; margin-top:-10px; margin-bottom:20px;'>💡 獲利金額與百分比皆已透過底層運算預先扣除證券商買賣手續費與相關交易稅 (永豐大戶投費率)。<br>💡 ETF 的管理費與保管費則由投信公司每日從淨值中扣除，故市值即為真實扣費後淨值。</div>", unsafe_allow_html=True)
-            
             threshold = st.slider("⚖️ 再平衡觸發門檻 (Threshold %)", 0.0, 10.0, 2.0, 0.5, help="當偏離目標權重超過此百分比時，觸發買賣建議。")
             
-            # 💡 一鍵再平衡執行清單 (完全移除多行 HTML 避免跑版)
+            # 💡 一鍵再平衡執行清單 (完全移除多行 HTML 避免 Markdown Parser 跑版)
             rebalance_items = []
             for item in current_view_data:
                 mult = 1.0 if is_tw_mode else current_rate
@@ -682,29 +685,28 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                         unit = "元" if is_tw_mode else "美元"
                         diff_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
                         if diff_amt > 0: 
-                            rebalance_items.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>💵 <span style='font-weight:900;'>現金</span>：建議 <span style='color:#166534; font-weight:800; background:#dcfce7; padding:2px 8px; border-radius:4px;'>存入 (ADD)</span> <b>{fmt_money(diff_amt)} {unit}</b></li>")
+                            rebalance_items.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <span style='font-weight:900; width:100px; display:inline-block;'>現金</span> <span style='color:#166534; font-weight:800; background:#dcfce7; padding:4px 10px; border-radius:6px; margin-right:12px;'>存入 (ADD)</span> <span style='font-weight:900;'>{fmt_money(diff_amt)} {unit}</span></li>")
                         else: 
-                            rebalance_items.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>💵 <span style='font-weight:900;'>現金</span>：建議 <span style='color:#991b1b; font-weight:800; background:#fee2e2; padding:2px 8px; border-radius:4px;'>提領 (SUB)</span> <b>{fmt_money(abs(diff_amt))} {unit}</b></li>")
+                            rebalance_items.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <span style='font-weight:900; width:100px; display:inline-block;'>現金</span> <span style='color:#991b1b; font-weight:800; background:#fee2e2; padding:4px 10px; border-radius:6px; margin-right:12px;'>提領 (SUB)</span> <span style='font-weight:900;'>{fmt_money(abs(diff_amt))} {unit}</span></li>")
                     else:
                         price_ntd = item.get("now_p", 1) * mult
                         shares_diff = int(diff_val / price_ntd) if price_ntd > 0 else 0
                         if shares_diff > 0: 
-                            rebalance_items.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>🛒 <span style='font-weight:900;'>{clean_name}</span>：建議 <span style='color:#166534; font-weight:800; background:#dcfce7; padding:2px 8px; border-radius:4px;'>買進 (BUY)</span> <b>{fmt_money(shares_diff)} 股</b> <span style='color:#64748b; font-size:0.9rem;'>(約 NTD {fmt_money(shares_diff * price_ntd)})</span></li>")
+                            rebalance_items.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:100px; display:inline-block;'>{clean_name}</span> <span style='color:#166534; font-weight:800; background:#dcfce7; padding:4px 10px; border-radius:6px; margin-right:12px;'>買進 (BUY)</span> <span style='font-weight:900;'>{fmt_money(shares_diff)} 股</span> <span style='color:#64748b; font-size:0.9rem; margin-left:8px;'>(約 NTD {fmt_money(shares_diff * price_ntd)})</span></li>")
                         elif shares_diff < 0: 
-                            rebalance_items.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>📉 <span style='font-weight:900;'>{clean_name}</span>：建議 <span style='color:#991b1b; font-weight:800; background:#fee2e2; padding:2px 8px; border-radius:4px;'>賣出 (SELL)</span> <b>{fmt_money(abs(shares_diff))} 股</b> <span style='color:#64748b; font-size:0.9rem;'>(約可變現 NTD {fmt_money(abs(shares_diff) * price_ntd)})</span></li>")
+                            rebalance_items.append(f"<li style='margin-bottom:12px; font-size:1.1rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>📉 <span style='font-weight:900; width:100px; display:inline-block;'>{clean_name}</span> <span style='color:#991b1b; font-weight:800; background:#fee2e2; padding:4px 10px; border-radius:6px; margin-right:12px;'>賣出 (SELL)</span> <span style='font-weight:900;'>{fmt_money(abs(shares_diff))} 股</span> <span style='color:#64748b; font-size:0.9rem; margin-left:8px;'>(約可變現 NTD {fmt_money(abs(shares_diff) * price_ntd)})</span></li>")
             
             if rebalance_items:
-                st.markdown(f"<div class='action-box' style='background:#f8fafc; border:1px solid #e2e8f0; border-left:5px solid #f59e0b; padding:16px; border-radius:8px; margin-bottom:24px;'><h4 style='color:#b45309; font-weight:900; margin-top:0;'>⚖️ 系統偵測到資產偏離！一鍵再平衡執行清單：</h4><div style='color:#64748b; margin-bottom:12px;'>為了維持您的戰略比例，請打開券商軟體執行以下交易：</div><ul style='margin-bottom:0;'>{''.join(rebalance_items)}</ul></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='action-box' style='background:#ffffff; border:1px solid #e2e8f0; border-left:6px solid #f59e0b; padding:24px; border-radius:12px; margin-bottom:30px; box-shadow:0 4px 6px rgba(0,0,0,0.05);'><h4 style='color:#b45309; font-weight:900; margin-top:0; font-size:1.3rem;'>⚖️ 系統偵測到資產偏離！一鍵再平衡執行清單：</h4><div style='color:#64748b; margin-bottom:16px; font-size:0.95rem;'>為了維持您的戰略比例，請打開券商軟體執行以下交易：</div><ul style='margin-bottom:0; padding-left:0; list-style-type:none;'>{''.join(rebalance_items)}</ul></div>", unsafe_allow_html=True)
             else:
-                st.markdown(f"<div class='action-box' style='background:#f0fdf4; border:1px solid #bbf7d0; border-left:5px solid #10b981; padding:16px; border-radius:8px; margin-bottom:24px;'><h4 style='color:#166534; font-weight:900; margin-top:0;'>✅ 投資組合健康度完美</h4><div style='color:#166534;'>目前所有資產權重皆在設定的容錯範圍內，無需進行再平衡交易。</div></div>", unsafe_allow_html=True)
-
-            st.markdown("<hr style='margin: 1rem 0; border-color: #f1f5f9;'>", unsafe_allow_html=True)
+                st.markdown(f"<div class='action-box' style='background:#f0fdf4; border:1px solid #bbf7d0; border-left:6px solid #10b981; padding:24px; border-radius:12px; margin-bottom:30px; box-shadow:0 4px 6px rgba(0,0,0,0.05);'><h4 style='color:#166534; font-weight:900; margin-top:0; font-size:1.3rem;'>✅ 投資組合健康度完美</h4><div style='color:#166534; font-size:1rem;'>目前所有資產權重皆在設定的容錯範圍內，無需進行再平衡交易。</div></div>", unsafe_allow_html=True)
 
             for item in current_view_data:
                 c = st.columns([1.5, 1.6, 1.5, 1.2, 1.3, 2.9])
                 
                 mult = 1.0 if is_tw_mode else current_rate
                 
+                # 🛡️ 安全提取變數
                 now_v = item.get("now_val_ntd", 0)
                 tgt_p = item.get("target_pct", 0)
                 a_cost = item.get("asset_cost", 0)
@@ -722,16 +724,16 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     
                     c[1].markdown(f"""
                     <div class='data-label'>投入本金 (Cost):</div><div class='data-value'>NTD {fmt_money(item.get('net_buy_cost', 0))}</div>
-                    <div class='data-label' style='margin-top:10px;'>目前市值 (Value):</div><div class='data-value'>NTD {fmt_money(now_v)}</div>
+                    <div class='data-label' style='margin-top:12px;'>目前市值 (Value):</div><div class='data-value'>NTD {fmt_money(now_v)}</div>
                     """, unsafe_allow_html=True)
                     
                     c[2].markdown(f"""
                     <div class='data-label'>真實淨獲利 (Net Pnl):</div><div class='data-value' style='color:#94a3b8;'>---</div>
-                    <div class='data-label' style='margin-top:10px;'>總報酬率 (Return):</div><div class='data-value' style='color:#94a3b8;'>---</div>
+                    <div class='data-label' style='margin-top:12px;'>總報酬率 (Return):</div><div class='data-value' style='color:#94a3b8;'>---</div>
                     """, unsafe_allow_html=True)
 
-                    c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>避險資產</div><div class='data-label' style='margin-top:10px;'>回撤率:</div><div class='data-value' style='color:#94a3b8;'>0.0%</div>", unsafe_allow_html=True)
-                    c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:#94a3b8;'>---</div><div class='data-label' style='margin-top:10px;'>🧠 戰術建議:</div><div class='data-value' style='color:#64748b;'>資金水庫</div>", unsafe_allow_html=True)
+                    c[3].markdown(f"<div class='data-label'>長線趨勢:</div><div class='data-value' style='color:#10b981;'>避險資產</div><div class='data-label' style='margin-top:12px;'>回撤率:</div><div class='data-value' style='color:#94a3b8;'>0.0%</div>", unsafe_allow_html=True)
+                    c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:#94a3b8;'>---</div><div class='data-label' style='margin-top:12px;'>🧠 戰術建議:</div><div class='data-value' style='color:#64748b;'>資金水庫</div>", unsafe_allow_html=True)
                     
                 else:
                     pnl_ntd = item.get('net_pnl', 0)
@@ -743,18 +745,18 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     
                     c[1].markdown(f"""
                     <div class='data-label'>含息投入本金 (Cost):</div><div class='data-value'>NTD {fmt_money(item.get('net_buy_cost', 0))}</div>
-                    <div class='data-label' style='margin-top:10px;'>預估變現市值 (Value):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div>
+                    <div class='data-label' style='margin-top:12px;'>預估變現市值 (Value):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div>
                     """, unsafe_allow_html=True)
                     
                     c[2].markdown(f"""
                     <div class='data-label'>真實淨獲利 (Net Pnl):</div><div class='data-value' style='color:{pnl_color};'>{pnl_sign}{fmt_money(pnl_ntd)}</div>
-                    <div class='data-label' style='margin-top:10px;'>總報酬率 (Return):</div><div class='data-value' style='color:{pnl_color};'>{pnl_sign}{pnl_pct:.2f}%</div>
+                    <div class='data-label' style='margin-top:12px;'>總報酬率 (Return):</div><div class='data-value' style='color:{pnl_color};'>{pnl_sign}{pnl_pct:.2f}%</div>
                     """, unsafe_allow_html=True)
                     
                     is_bear = n_p < item.get('ma200', 0)
                     trend_tag = "<span style='color:#ef4444; font-weight:800;'>🔴 破線空頭</span>" if is_bear else "<span style='color:#10b981; font-weight:800;'>🟢 多頭格局</span>"
                     dd_color = "#ef4444" if item.get('drawdown', 0) < -20 else ("#f59e0b" if item.get('drawdown', 0) < -10 else "#64748b")
-                    c[3].markdown(f"<div class='data-label'>年線 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:10px;'>距高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item.get('drawdown',0):.1f}%</div>", unsafe_allow_html=True)
+                    c[3].markdown(f"<div class='data-label'>年線 (MA200):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:12px;'>距高點回撤:</div><div class='data-value' style='color:{dd_color};'>{item.get('drawdown',0):.1f}%</div>", unsafe_allow_html=True)
                     
                     bias_color = "#ef4444" if item.get('bias', 0) >= 25 else ("#f59e0b" if item.get('bias', 0) >= 15 else ("#10b981" if item.get('bias', 0) <= -15 else "#64748b"))
                     lev = item.get("leverage", 1.0)
@@ -765,7 +767,7 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     elif k_val < 20 or rsi_val < 30: tactical_action = "<span style='color:#10b981; font-weight:800;'>🟢 超賣 (可加碼)</span>"
                     elif k_val > 80: tactical_action = "<span style='color:#f59e0b; font-weight:800;'>⚠️ 鈍化 (慎回檔)</span>"
                     elif item.get("bias", 0) >= 25: tactical_action = "<span style='color:#ef4444; font-weight:800;'>🚨 過熱 (考量止盈)</span>"
-                    c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item.get('bias',0):+.1f}%</div><div class='data-label' style='margin-top:10px;'>🧠 戰術建議:</div><div style='font-size:0.95rem;'>{tactical_action}</div>", unsafe_allow_html=True)
+                    c[4].markdown(f"<div class='data-label'>乖離率 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item.get('bias',0):+.1f}%</div><div class='data-label' style='margin-top:12px;'>🧠 戰術建議:</div><div style='font-size:0.95rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 with c[5]:
                     st.markdown("<div class='data-label'>戰略目標 (%) ✍️</div>", unsafe_allow_html=True)
@@ -789,23 +791,24 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     title_color = "#0f172a" if abs(diff) <= threshold else "#92400e"
                     title_text = "✅ 權重符合標準" if abs(diff) <= threshold else f"⚠️ 權重偏離 {diff:+.1f}%"
                     
-                    progress_html = f"<div style='margin-top:8px; margin-bottom:4px; font-size:0.75rem; color:#64748b; font-weight:700;'>實際 {real_pct:.1f}% / 目標 {new_tgt}%</div><div style='width: 100%; background-color: #f1f5f9; border-radius: 4px; height: 6px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {'#10b981' if abs(diff) <= threshold else '#f59e0b'}; height: 100%;'></div></div>"
+                    # 💡 膠囊型進度條美化
+                    progress_html = f"<div style='margin-top:8px; margin-bottom:8px; font-size:0.8rem; color:#64748b; font-weight:700;'>實際 {real_pct:.1f}% / 目標 {new_tgt}%</div><div style='width: 100%; background-color: #e2e8f0; border-radius: 99px; height: 8px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {'#10b981' if abs(diff) <= threshold else '#f59e0b'}; height: 100%; border-radius: 99px;'></div></div>"
                     
-                    # 💡 安全的 HTML 渲染：扁平化結構，完全拔除換行引發的 Markdown Code Block Bug
+                    # 💡 扁平化安全渲染徽章，絕對不換行
                     if item.get("ticker") == "CASH":
                         unit = "元" if is_tw_mode else "美元"
                         diff_amt = int(diff_val / (1.0 if is_tw_mode else current_rate))
-                        if diff_amt > 0: action_msg = f"<div style='margin-top:12px;'><span class='badge-buy'>ADD 存入</span> <span style='font-weight:900; font-size:1.1rem; color:#0f172a; margin-left:6px;'>{fmt_money(diff_amt)} {unit}</span></div>"
-                        elif diff_amt < 0: action_msg = f"<div style='margin-top:12px;'><span class='badge-sell'>SUB 提領</span> <span style='font-weight:900; font-size:1.1rem; color:#0f172a; margin-left:6px;'>{fmt_money(abs(diff_amt))} {unit}</span></div>"
-                        else: action_msg = f"<div style='margin-top:12px;'><span class='badge-hold'>無需調整</span></div>"
+                        if diff_amt > 0: action_msg = f"<div style='margin-top:16px;'><span class='badge-buy'>ADD 存入</span> <span style='font-weight:900; font-size:1.15rem; color:#0f172a; margin-left:8px;'>{fmt_money(diff_amt)} {unit}</span></div>"
+                        elif diff_amt < 0: action_msg = f"<div style='margin-top:16px;'><span class='badge-sell'>SUB 提領</span> <span style='font-weight:900; font-size:1.15rem; color:#0f172a; margin-left:8px;'>{fmt_money(abs(diff_amt))} {unit}</span></div>"
+                        else: action_msg = f"<div style='margin-top:16px;'><span class='badge-hold'>無需調整</span></div>"
                     else:
                         price_ntd = n_p * mult
                         shares_diff = int(diff_val / price_ntd) if price_ntd > 0 else 0
-                        if shares_diff > 0: action_msg = f"<div style='margin-top:12px;'><span class='badge-buy'>BUY 買進</span> <span style='font-weight:900; font-size:1.1rem; color:#0f172a; margin-left:6px;'>{fmt_money(shares_diff)} 股</span></div>"
-                        elif shares_diff < 0: action_msg = f"<div style='margin-top:12px;'><span class='badge-sell'>SELL 賣出</span> <span style='font-weight:900; font-size:1.1rem; color:#0f172a; margin-left:6px;'>{fmt_money(abs(shares_diff))} 股</span></div>"
-                        else: action_msg = f"<div style='margin-top:12px;'><span class='badge-hold'>無需動作</span></div>"
+                        if shares_diff > 0: action_msg = f"<div style='margin-top:16px;'><span class='badge-buy'>BUY 買進</span> <span style='font-weight:900; font-size:1.15rem; color:#0f172a; margin-left:8px;'>{fmt_money(shares_diff)} 股</span></div>"
+                        elif shares_diff < 0: action_msg = f"<div style='margin-top:16px;'><span class='badge-sell'>SELL 賣出</span> <span style='font-weight:900; font-size:1.15rem; color:#0f172a; margin-left:8px;'>{fmt_money(abs(shares_diff))} 股</span></div>"
+                        else: action_msg = f"<div style='margin-top:16px;'><span class='badge-hold'>無需動作</span></div>"
 
-                    action_html = f"<div class='pro-card' style='background-color:{box_bg}; border-color:{box_border}; padding:12px; margin-top:10px;'><div style='color:{title_color}; font-weight:800; font-size:0.85rem; text-transform:uppercase;'>{title_text}</div>{progress_html}{action_msg}</div>"
+                    action_html = f"<div class='pro-card' style='background-color:{box_bg}; border-color:{box_border}; padding:16px; margin-top:4px;'><div style='color:{title_color}; font-weight:800; font-size:0.9rem; text-transform:uppercase;'>{title_text}</div>{progress_html}{action_msg}</div>"
                     st.markdown(action_html, unsafe_allow_html=True)
 
                 st.markdown("<hr style='margin: 1rem 0; border-color: #f1f5f9;'>", unsafe_allow_html=True)
@@ -850,7 +853,7 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
         
         if add_cash > 0 and current_view_data:
             st.markdown("<div class='action-box'>", unsafe_allow_html=True)
-            st.markdown("<h4 style='color:#0f172a; font-weight:800;'>🎯 演算法建議最佳佈局清單：</h4>", unsafe_allow_html=True)
+            st.markdown("<h4 style='color:#0f172a; font-weight:900; margin-top:0;'>🎯 演算法建議最佳佈局清單：</h4>", unsafe_allow_html=True)
             ideal_total_val = local_total_val + add_cash
             buy_list = []
             for item in current_view_data:
@@ -859,18 +862,18 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                 if shortfall_ntd > 0:
                     if item.get("ticker") == "CASH":
                         buy_units = shortfall_ntd / (1.0 if is_tw_mode else current_rate)
-                        buy_list.append(f"💵 **現金保留**：建議補齊 **{fmt_money(buy_units)}** {'元' if is_tw_mode else '美元'}")
+                        buy_list.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>💵 <span style='font-weight:900;'>現金保留</span>：建議補齊 <b>{fmt_money(buy_units)}</b> {'元' if is_tw_mode else '美元'}</li>")
                     elif item.get("ticker", "").startswith("^"): 
-                        buy_list.append(f"📊 **{item.get('ticker', '')}**：建議加碼 **NTD {fmt_money(shortfall_ntd)}**")
+                        buy_list.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>📊 <span style='font-weight:900;'>{item.get('ticker', '')}</span>：建議加碼 <b>NTD {fmt_money(shortfall_ntd)}</b></li>")
                     else:
                         price_ntd = item.get("now_p", 1) if is_tw_mode else (item.get("now_p", 1) * current_rate)
                         shares_to_buy = int(shortfall_ntd / price_ntd) if price_ntd > 0 else 0
                         clean_name = item.get("ticker", "").split('.')[0]
                         if shares_to_buy > 0: 
-                            buy_list.append(f"🛒 **{clean_name}**：建議買進 **{fmt_money(shares_to_buy)}** 股 (約投入 NTD {fmt_money(shares_to_buy * price_ntd)})")
+                            buy_list.append(f"<li style='margin-bottom:8px; font-size:1.1rem;'>🛒 <span style='font-weight:900;'>{clean_name}</span>：建議買進 <span style='color:#166534; font-weight:800; background:#dcfce7; padding:2px 8px; border-radius:4px;'>{fmt_money(shares_to_buy)} 股</span> <span style='color:#64748b; font-size:0.9rem;'>(約投入 NTD {fmt_money(shares_to_buy * price_ntd)})</span></li>")
             
             if buy_list:
-                for b in buy_list: st.markdown(f"- <span style='font-size:1.15rem; color:#1e293b;'>{b}</span>", unsafe_allow_html=True)
+                st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{''.join(buy_list)}</ul>", unsafe_allow_html=True)
             else: 
                 st.write("目前無特定缺口，可依原比例分配。")
             st.markdown("</div>", unsafe_allow_html=True)
@@ -882,7 +885,7 @@ elif app_mode == "🔍 全球市場量化終端":
     st.sidebar.header("🌍 大盤快搜 (Indices)")
     market_choice = st.sidebar.radio("快速切換分析標的：", ["自訂輸入個股", "台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體"])
 
-    st.title("📊 全球市場量化終端 (Market Terminal)")
+    st.markdown("<h1 style='margin-bottom: 24px;'>📊 全球市場量化終端 (Market Terminal)</h1>", unsafe_allow_html=True)
     k_period = st.radio("選擇 K 線週期 (Timeframe)：", ["日K", "週K", "月K", "年K"], horizontal=True)
     st.markdown("---")
 
@@ -942,8 +945,8 @@ elif app_mode == "🔍 全球市場量化終端":
                         cc1, cc2, cc3 = st.columns(3)
                         
                         if ticker_input.startswith("^"):
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{fmt_money(last_close)} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem;'>回撤率: {dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {fmt_money(high_52w)} 點</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.8rem;'>{fmt_money(last_close)} <span style='font-size:1rem; color:#64748b;'>點</span></div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.8rem; color:#ef4444;'>{dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {fmt_money(high_52w)} 點</div></div>", unsafe_allow_html=True)
                             pe_str, yd_str, sec_str = "大盤指數", "大盤指數", "大盤指數"
                         else:
                             try:
@@ -952,14 +955,14 @@ elif app_mode == "🔍 全球市場量化終端":
                                 yd_str = f"{float(info.get('dividendYield', 0) or 0)*100:.2f} %"
                                 sec_str = info.get('sector', '未提供')
                             except: pe_str, yd_str, sec_str = "無/虧損", "無配息", "未提供"
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>🏢 所屬產業板塊</div><div class='data-value' style='font-size:1.6rem;'>{sec_str}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面指標</div><div class='data-value' style='font-size:1.4rem;'>本益比: {pe_str}</div><div style='color:#64748b; font-size:0.95rem; font-weight:700; margin-top:4px;'>殖利率: {yd_str}</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>🏢 所屬產業板塊</div><div class='data-value' style='font-size:1.8rem;'>{sec_str}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面指標</div><div class='data-value' style='font-size:1.6rem;'>本益比: {pe_str}</div><div style='color:#64748b; font-size:1rem; font-weight:700; margin-top:4px;'>殖利率: {yd_str}</div></div>", unsafe_allow_html=True)
                         
-                        cc3.markdown(f"<div class='pro-card'><div class='data-label'>⚡ 短線動能技術指標</div><div class='data-value' style='font-size:1.6rem;'>RSI: {rsi_val:.1f}</div><div style='color:#0f172a; font-size:0.95rem; font-weight:700; margin-top:4px;'>狀態: {rsi_status}</div></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div class='pro-card'><div class='data-label'>⚡ 短線動能技術指標</div><div class='data-value' style='font-size:1.8rem;'>RSI: {rsi_val:.1f}</div><div style='color:#0f172a; font-size:1rem; font-weight:700; margin-top:4px;'>狀態: {rsi_status}</div></div>", unsafe_allow_html=True)
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         clean_title = ticker_input.split('.')[0]
-                        st.subheader(f"📈 {clean_title} {zh_name} 量化技術走勢")
+                        st.markdown(f"<h3 style='margin-bottom: 20px;'>📈 {clean_title} {zh_name} 量化技術走勢</h3>", unsafe_allow_html=True)
                         
                         fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
                         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="K線"), row=1, col=1)
