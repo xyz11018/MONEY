@@ -46,44 +46,39 @@ st.markdown("""
     html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
     
     .market-header { 
-        padding: 14px 20px; border-radius: 8px; font-weight: 900; 
-        font-size: 1.25rem; color: #ffffff !important;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        text-transform: uppercase; letter-spacing: 1px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-        margin-bottom: 24px;
+        padding: 12px 18px; border-radius: 6px; font-weight: 800; 
+        font-size: 1.15rem; color: #f8fafc !important;
+        background: #0f172a; text-transform: uppercase; letter-spacing: 0.5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    .tw-market { border-left: 6px solid #10b981; }
-    .us-market { border-left: 6px solid #3b82f6; }
-    .global-market { border-left: 6px solid #8b5cf6; }
+    .tw-market { border-left: 5px solid #059669; }
+    .us-market { border-left: 5px solid #2563eb; }
+    .global-market { border-left: 5px solid #8b5cf6; }
     
-    .pro-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%; transition: all 0.2s ease-in-out; }
-    .pro-card:hover { transform: translateY(-3px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08); border-color: #cbd5e1; }
+    .pro-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); height: 100%; }
+    .kpi-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; box-shadow: 0 2px 5px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; }
     
-    .kpi-card { background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; transition: all 0.2s ease; }
-    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 12px -2px rgba(0,0,0,0.06); }
+    .ticker-display { font-size: 1.6rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
+    .stock-name-display { font-size: 0.9rem; color: #64748b; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
+    .price-display { font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-top: 4px; }
+    .date-display { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; font-weight: 600; text-transform: uppercase; }
     
-    .ticker-display { font-size: 1.7rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
-    .stock-name-display { font-size: 0.95rem; color: #64748b; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
-    .price-display { font-size: 1.35rem; font-weight: 800; color: #0f172a; margin-top: 4px; }
-    .date-display { font-size: 0.8rem; color: #94a3b8; margin-top: 4px; font-weight: 600; }
+    .data-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .data-value { font-size: 1.05rem; font-weight: 800; color: #1e293b; }
     
-    .data-label { font-size: 0.8rem; color: #64748b; margin-bottom: 4px; font-weight: 700; letter-spacing: 0.5px; }
-    .data-value { font-size: 1.15rem; font-weight: 800; color: #1e293b; }
-    
-    .badge-buy { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #dcfce7; color: #166534; font-weight: 800; font-size: 0.85rem; border: 1px solid #bbf7d0; }
-    .badge-sell { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #fee2e2; color: #991b1b; font-weight: 800; font-size: 0.85rem; border: 1px solid #fecaca; }
-    .badge-hold { display: inline-block; padding: 6px 12px; border-radius: 6px; background-color: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.85rem; border: 1px solid #e2e8f0; }
+    .badge-buy { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #dcfce7; color: #166534; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
+    .badge-sell { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #fee2e2; color: #991b1b; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
+    .badge-hold { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.8rem; letter-spacing: 0.5px; }
     
     .stNumberInput input { font-weight: 800 !important; color: #0f172a !important; }
-    .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 6px solid #0f172a; padding: 20px; border-radius: 8px; margin-top: 15px; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 5px solid #0f172a; padding: 15px; border-radius: 6px; margin-top: 15px; margin-bottom: 25px; }
     
     .modebar { display: none !important; }
     hr { border-color: #e2e8f0; margin: 2rem 0; }
     
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; border-bottom: 2px solid #e2e8f0; padding-bottom: 0px;}
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 24px; color: #64748b; font-weight: 700; border: none;}
-    .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: none !important; }
+    .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f8fafc; border-radius: 6px 6px 0 0; padding: 0 20px; color: #64748b; font-weight: 700;}
+    .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: 3px solid #10b981; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -168,7 +163,7 @@ def get_leverage(ticker):
     return 1.0
 
 # ==========================================
-# 3. 📉 即時數據與量化指標抓取引擎 (升級10年數據)
+# 3. 📉 即時數據與量化指標抓取引擎
 # ==========================================
 def fetch_market_data(ticker):
     if not ticker or ticker == "CASH": 
@@ -176,7 +171,6 @@ def fetch_market_data(ticker):
     try:
         t_obj = yf.Ticker(ticker, session=yf_session)
         realtime_price = float(t_obj.fast_info.get('lastPrice', 0) or 0)
-        # 💡 將底層抓取時間擴大到 10 年，為建倉日截斷做準備
         df = yf.download(ticker, period="10y", progress=False, session=yf_session)
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
@@ -187,7 +181,6 @@ def fetch_market_data(ticker):
                 price = realtime_price if realtime_price > 0 else float(closes.iloc[-1] or 0)
                 date_str = "最新即時報價" if realtime_price > 0 else closes.index[-1].strftime("%Y-%m-%d")
                 
-                # 計算近一年高點用以評估回撤 (取近252個交易日)
                 recent_highs = highs.tail(252) if len(highs) > 252 else highs
                 high52w = max(float(recent_highs.max()), price)
                 ma200 = float(closes.rolling(window=200).mean().iloc[-1] or price) if len(closes) >= 200 else price
@@ -255,7 +248,6 @@ def aggregate_lots(lots, targets):
         if tk == "CASH": agg[tk]["total_cost"] += shares
         else: agg[tk]["total_cost"] += shares * price
         
-        # 💡 紀錄最早建倉日 (供線圖截斷使用)
         d = str(lot.get("buy_date", "")).strip()
         if d and tk != "CASH":
             if agg[tk]["earliest_buy_date"] is None or d < agg[tk]["earliest_buy_date"]:
@@ -381,7 +373,7 @@ st.sidebar.markdown("---")
 # 5. 主功能：總體財富總覽 (Dashboard)
 # ==========================================
 if app_mode == "🏠 總體財富總覽":
-    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);'>🏠 總體財富總覽 (Global Wealth Dashboard)</div>", unsafe_allow_html=True)
+    st.markdown("<h1>🏠 總體財富總覽 (Wealth Dashboard)</h1>", unsafe_allow_html=True)
     
     with st.expander("🎯 設定全球財務自由目標 (Global Financial Goals)"):
         g_cols = st.columns(2)
@@ -479,7 +471,7 @@ if app_mode == "🏠 總體財富總覽":
             <div class='data-label' style='color:#475569;'>🌍 全球總投資市值 (Total)</div>
             <div style='font-size:2.2rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(total_aum_ntd)}</div>
         </div>
-        <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #10b981;'>
+        <div class='kpi-card' style='flex:1; min-width:200px; border-top: 4px solid #059669;'>
             <div class='data-label'>🇹🇼 台股總部位 (TW Market)</div>
             <div style='font-size:1.8rem; font-weight:900; color:#0f172a;'>NTD {fmt_money(tw_aum_ntd)}</div>
         </div>
@@ -516,10 +508,14 @@ if app_mode == "🏠 總體財富總覽":
         if privacy_mode:
             chart_df['Total'] = (chart_df['Total'] / chart_df['Total'].iloc[0] - 1) * 100
             y_title = "全球資產成長率 (%)"
-        else: y_title = "總市值 (NTD)"
+            ht = "時間: %{x|%Y年%m月}<br>成長率: %{y:.2f}%<extra></extra>"
+        else: 
+            y_title = "總市值 (NTD)"
+            ht = "時間: %{x|%Y年%m月}<br>總市值: NTD %{y:,.0f}<extra></extra>"
 
         fig_eq = px.line(chart_df, x=chart_df.index, y='Total', template="plotly_white")
-        fig_eq.update_traces(line=dict(color='#8b5cf6', width=2), fill='tozeroy', fillcolor='rgba(139, 92, 246, 0.1)')
+        fig_eq.update_traces(line=dict(color='#8b5cf6', width=2), fill='tozeroy', fillcolor='rgba(139, 92, 246, 0.1)', hovertemplate=ht)
+        
         if privacy_mode: fig_eq.update_layout(yaxis=dict(showticklabels=True, tickformat=".1f"))
         else: fig_eq.update_layout(yaxis=dict(showticklabels=True))
         fig_eq.update_layout(height=400, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_title, xaxis_title="")
@@ -559,7 +555,6 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                     local_total_val += gross_now_val
                     local_total_cost += net_cost
                     
-                    # 💡 將最早建倉日與歷史K線紀錄進陣列
                     current_view_data.append({
                         **asset, "now_p": now_p, "date": date_str, 
                         "now_val_ntd": gross_now_val, "net_buy_cost": net_cost, "net_real_val": net_val,
@@ -817,16 +812,19 @@ elif app_mode in ["🇹🇼 台股量化部位管理", "🇺🇸 美股量化部
                                 stock_pnl_series = (hist_close - item.get("buy_price",0)) * item.get("init_shares",0) * mult
                                 pnl_df = stock_pnl_series.to_frame(name="Profit_Value")
                                 
+                                # 💡 客製化 Hover Tooltip (乾淨俐落)
                                 if privacy_mode:
                                     pnl_df["Display_Value"] = ((hist_close - item.get("buy_price",0)) / (item.get("buy_price",1) if item.get("buy_price",0) > 0 else 1)) * 100
                                     y_axis_label = "獲利回報率 (%)"
+                                    ht = "時間: %{x|%Y年%m月}<br>回報率: %{y:.2f}%<extra></extra>"
                                 else:
                                     pnl_df["Display_Value"] = pnl_df["Profit_Value"]
                                     y_axis_label = "未實現獲利 (NTD)"
+                                    ht = "時間: %{x|%Y年%m月}<br>獲利金額: NTD %{y:,.0f}<extra></extra>"
                                     
                                 fig_pnl = px.line(pnl_df, x=pnl_df.index, y="Display_Value", template="plotly_white")
                                 curve_color = '#10b981' if pnl_df["Display_Value"].iloc[-1] >= 0 else '#ef4444'
-                                fig_pnl.update_traces(line=dict(color=curve_color, width=2), fill='tozeroy', fillcolor=f"rgba({ '16,185,129' if curve_color=='#10b981' else '239,68,68' }, 0.05)")
+                                fig_pnl.update_traces(line=dict(color=curve_color, width=2), fill='tozeroy', fillcolor=f"rgba({ '16,185,129' if curve_color=='#10b981' else '239,68,68' }, 0.05)", hovertemplate=ht)
                                 fig_pnl.update_layout(height=280, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_axis_label, xaxis_title="")
                                 st.plotly_chart(fig_pnl, use_container_width=True, config={'displayModeBar': False})
                             else:
@@ -965,7 +963,7 @@ elif app_mode == "🔍 全球市場量化終端":
                         cc1, cc2, cc3 = st.columns(3)
                         
                         if ticker_input.startswith("^"):
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{fmt_money(last_close)} <span style='font-size:1rem; color:#64748b;'>點</span></div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>📈 最新大盤指數</div><div class='data-value' style='font-size:1.6rem;'>{fmt_money(last_close)} 點</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>長線均線({n3}): {fmt_money(ma200_val)}</div></div>", unsafe_allow_html=True)
                             cc2.markdown(f"<div class='pro-card'><div class='data-label'>📉 歷史高點與波段回撤</div><div class='data-value' style='font-size:1.6rem; color:#ef4444;'>{dd_pct:.2f}%</div><div style='color:#64748b; font-size:0.85rem; margin-top:8px;'>最高位階: {fmt_money(high_52w)} 點</div></div>", unsafe_allow_html=True)
                             pe_str, yd_str, sec_str = "大盤指數", "大盤指數", "大盤指數"
                         else:
@@ -975,10 +973,10 @@ elif app_mode == "🔍 全球市場量化終端":
                                 yd_str = f"{float(info.get('dividendYield', 0) or 0)*100:.2f} %"
                                 sec_str = info.get('sector', '未提供')
                             except: pe_str, yd_str, sec_str = "無/虧損", "無配息", "未提供"
-                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>🏢 所屬產業板塊</div><div class='data-value' style='font-size:1.6rem;'>{sec_str}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面指標</div><div class='data-value' style='font-size:1.4rem;'>本益比: {pe_str}</div><div style='color:#64748b; font-size:1rem; font-weight:700; margin-top:4px;'>殖利率: {yd_str}</div></div>", unsafe_allow_html=True)
+                            cc1.markdown(f"<div class='pro-card'><div class='data-label'>🏢 所屬產業板塊</div><div class='data-value' style='font-size:1.8rem;'>{sec_str}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面指標</div><div class='data-value' style='font-size:1.6rem;'>本益比: {pe_str}</div><div style='color:#64748b; font-size:1rem; font-weight:700; margin-top:4px;'>殖利率: {yd_str}</div></div>", unsafe_allow_html=True)
                         
-                        cc3.markdown(f"<div class='pro-card'><div class='data-label'>⚡ 短線動能技術指標</div><div class='data-value' style='font-size:1.6rem;'>RSI: {rsi_val:.1f}</div><div style='color:#0f172a; font-size:1rem; font-weight:700; margin-top:4px;'>狀態: {rsi_status}</div></div>", unsafe_allow_html=True)
+                        cc3.markdown(f"<div class='pro-card'><div class='data-label'>⚡ 短線動能技術指標</div><div class='data-value' style='font-size:1.8rem;'>RSI: {rsi_val:.1f}</div><div style='color:#0f172a; font-size:1rem; font-weight:700; margin-top:4px;'>狀態: {rsi_status}</div></div>", unsafe_allow_html=True)
                         
                         st.markdown("<br>", unsafe_allow_html=True)
                         clean_title = ticker_input.split('.')[0]
