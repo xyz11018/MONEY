@@ -13,7 +13,7 @@ import requests
 import google.generativeai as genai
 
 # ==========================================
-# 🔑 終極安全 API Key 讀取機制
+# 🔑 Gemini 全球操盤決策大腦 API 讀取機制
 # ==========================================
 try:
     MY_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -439,7 +439,6 @@ if app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
                         now_val_ntd = init_sh * rate
                         asset_cost_ntd = now_val_ntd
                         cash_total_ntd += now_val_ntd
-                        yield_pct = 0.0
                     else: 
                         now_val_ntd = now_p * rate * init_sh
                         net_cost, _, _, _, _, _ = calculate_net_pnl_stats({**asset, "now_p": now_p}, is_tw, rate)
@@ -461,13 +460,20 @@ if app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
                     total_cost_ntd += asset_cost_ntd
                     total_div_ntd += (now_val_ntd * yield_pct)
 
+    # 💡 修復 NameError: 補齊 val_1y 的定義
     if not combined_hist_df.empty:
         combined_hist_df = combined_hist_df.ffill()
         combined_hist_df['Total'] = combined_hist_df.sum(axis=1) + cash_total_ntd
         
         ytd_date = str(datetime.datetime.now().year) + "-01-01"
+        one_year_ago_date = (datetime.datetime.now() - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+        
         try: val_ytd = combined_hist_df['Total'].loc[ytd_date:].iloc[0]
         except: val_ytd = combined_hist_df['Total'].iloc[0]
+        
+        try: val_1y = combined_hist_df['Total'].loc[one_year_ago_date:].iloc[0]
+        except: val_1y = combined_hist_df['Total'].iloc[0]
+        
         val_now = combined_hist_df['Total'].iloc[-1]
         
         return_ytd = ((val_now / val_ytd) - 1) * 100 if val_ytd > 0 else 0
@@ -527,7 +533,7 @@ if app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     
     if not combined_hist_df.empty:
         st.markdown(f'<div class="market-header global-market" style="background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-left-color: #8b5cf6;">📈 全球資產歷史淨值走勢 (Historical AUM Curve)</div>', unsafe_allow_html=True)
-        chart_period = st.radio("線圖重採樣週期：", ["日線 (Daily)", "週線 (Weekly)", "月線 (Monthly)"], horizontal=True)
+        chart_period = st.radio("線圖重採樣週期：", ["日線 (Daily)", "週線 (Weekly)", "月線 (Monthly)"], horizontal=True, key="dashboard_radio")
         
         chart_df = combined_hist_df[['Total']].copy()
         if chart_period == "週線 (Weekly)": chart_df = chart_df.resample('W').last()
@@ -547,7 +553,7 @@ if app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
         if privacy_mode: fig_eq.update_layout(yaxis=dict(showticklabels=True, tickformat=".1f"))
         else: fig_eq.update_layout(yaxis=dict(showticklabels=True))
         fig_eq.update_layout(height=450, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_title, xaxis_title="", hovermode="x unified")
-        st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False})
+        st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False}, key="dashboard_global_eq_chart")
 
 # ==========================================
 # 🇹🇼 / 🇺🇸 核心操盤分頁模組 (主力量化倉位)
@@ -579,7 +585,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                         {**asset, "now_p": now_p}, is_tw_mode, current_rate
                     )
                     
-                    # 計算名目本金分母 (會計平衡：成本 + 未實現損益 = 即時變現市值)
+                    # 💡 修正會計恆等式：淨市值 = 淨成本 + 淨利
                     gross_now_val = net_val if asset["ticker"] != "CASH" else asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                     
                     # 波動風險敞口
@@ -641,7 +647,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             lots_df = lots_df[["ticker", "shares", "buy_price", "buy_date"]]
             lots_df["ticker"] = lots_df["ticker"].apply(lambda x: str(x).split('.')[0] if pd.notna(x) else "")
             
-        # 🛡️ 關鍵修正：精準配對 Data Editor 的中文標題，根除舊版無法儲存的重大 BUG
+        # 🛡️ 關鍵修正：精準配對 Data Editor 的中文標題
         lots_df.columns = ["資產代碼 (Ticker)", "持有數量 (Shares)", "建倉均價 (Avg. Cost)", "建倉日期 (Date)"]
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
         
@@ -649,7 +655,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             with st.spinner('正在覆寫並同步伺服器記憶體...'):
                 new_lots = []
                 for _, row in edited_lots.iterrows():
-                    tk_raw = row["資產代碼 (Ticker)"]  # 💡 完美匹配
+                    tk_raw = row["資產代碼 (Ticker)"]
                     if pd.isna(tk_raw): continue
                     tk = str(tk_raw).strip().upper()
                     if not tk or tk in ["NAN", "NONE"]: continue
@@ -782,11 +788,11 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     k_val = item.get("kd_k", 50.0)
                     rsi_val = item.get("rsi", 50.0)
                     tactical_action = "<span style='color:#64748b;'>⚖️ 戰略中立持有</span>"
-                    if is_bear and lev >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:900;'>🛑 停損防護 (STOP LOSS)</span>"
-                    elif k_val < 20 or rsi_val < 30: tactical_action = "<span style='color:#10b981; font-weight:900;'>🟢 逢低抄底 (BUY DIP)</span>"
-                    elif k_val > 80: tactical_action = "<span style='color:#f59e0b; font-weight:900;'>⚠️ 動能鈍化 (OVERBOUGHT)</span>"
-                    elif item.get("bias", 0) >= 25: tactical_action = "<span style='color:#ef4444; font-weight:900;'>🚨 獲利解平 (TAKE PROFIT)</span>"
-                    c[4].markdown(f"<div class='data-label'>乖離率掃描 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item.get('bias',0):+.1f}%</div><div class='data-label' style='margin-top:12px;'>🧠 模型戰術 (Tactics):</div><div style='font-size:1rem;'>{tactical_action}</div>", unsafe_allow_html=True)
+                    if is_bear and lev >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:900;'>🛑 破線停損 (STOP)</span>"
+                    elif k_val < 20 or rsi_val < 30: tactical_action = "<span style='color:#10b981; font-weight:900;'>🟢 逢低加碼 (BUY)</span>"
+                    elif k_val > 80: tactical_action = "<span style='color:#f59e0b; font-weight:900;'>⚠️ 高檔鈍化 (WATCH)</span>"
+                    elif item.get("bias", 0) >= 25: tactical_action = "<span style='color:#ef4444; font-weight:900;'>🚨 獲利解平 (TAKE)</span>"
+                    c[4].markdown(f"<div class='data-label'>乖離率掃描 (BIAS):</div><div class='data-value' style='color:{bias_color};'>{item.get('bias',0):+.1f}%</div><div class='data-label' style='margin-top:12px;'>🧠 終端戰術 (Tactics):</div><div style='font-size:0.95rem;'>{tactical_action}</div>", unsafe_allow_html=True)
 
                 with c[5]:
                     st.markdown("<div class='data-label'>戰略目標權重 (%) ✍️</div>", unsafe_allow_html=True)
@@ -810,7 +816,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     title_color = "#0f172a" if abs(diff) <= rebalance_threshold else "#92400e"
                     title_text = "✅ 配置達模型最佳化" if abs(diff) <= rebalance_threshold else f"⚠️ 占比偏離 {diff:+.1f}%"
                     
-                    progress_html = f"<div style='margin-top:8px; margin-bottom:6px; font-size:0.8rem; color:#64748b; font-weight:700;'>現時占比 {real_pct:.1f}% / 戰略目標 {new_tgt}%</div><div style='width: 100%; background-color: #e2e8f0; border-radius: 99px; height: 10px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {'#10b981' if abs(diff) <= rebalance_threshold else '#f59e0b'}; height: 100%; border-radius: 99px;'></div></div>"
+                    progress_html = f"<div style='margin-top:8px; margin-bottom:6px; font-size:0.8rem; color:#64748b; font-weight:700;'>現時占比 {real_pct:.1f}% / 風險 Beta 權重: {lev:.1f}x / 目標 {new_tgt}%</div><div style='width: 100%; background-color: #e2e8f0; border-radius: 99px; height: 10px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {'#10b981' if abs(diff) <= rebalance_threshold else '#f59e0b'}; height: 100%; border-radius: 99px;'></div></div>"
                     
                     if item.get("ticker") == "CASH":
                         unit = "元" if is_tw_mode else "美元"
@@ -825,7 +831,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                         elif shares_diff < 0: action_msg = f"<div style='margin-top:16px;'><span class='badge-sell'>SELL 執行平倉</span> <span style='font-weight:900; font-size:1.15rem; color:#0f172a; margin-left:8px;'>{fmt_money(abs(shares_diff))} 股</span></div>"
                         else: action_msg = f"<div style='margin-top:16px;'><span class='badge-hold'>無指示</span></div>"
 
-                    # 💡 扁平化渲染，防堵換行造成代碼外顯跑版
                     action_html = f"<div class='pro-card' style='background-color:{box_bg}; border-color:{box_border}; padding:18px; margin-top:4px;'><div style='color:{title_color}; font-weight:800; font-size:0.95rem; text-transform:uppercase;'>{title_text}</div>{progress_html}{action_msg}</div>"
                     st.markdown(action_html, unsafe_allow_html=True)
 
@@ -871,7 +876,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                                 fig_pnl.update_traces(line=dict(color=curve_color, width=2.5), fill='tozeroy', fillcolor=f"rgba({ '16,185,129' if curve_color=='#10b981' else '239,68,68' }, 0.08)", hovertemplate=ht)
                                 fig_pnl.update_layout(height=300, margin=dict(t=15, b=15, l=15, r=15), yaxis_title=y_axis_label, xaxis_title="", hovermode="x unified")
                                 
-                                # 🛡️ 注入獨立專屬 Key ID，徹底阻斷 StreamlitDuplicateElementId 報錯
                                 st.plotly_chart(fig_pnl, use_container_width=True, config={'displayModeBar': False}, key=f"pnl_chart_{market_label}_{item.get('ticker')}")
                             else: st.info("該標的在交割日期後無有效報價，無法進行回測追蹤。")
                         else: st.info("無有效歷史價格陣列。")
@@ -1034,7 +1038,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
                             fig.update_yaxes(showticklabels=False, row=2, col=1)
                             
                         fig.update_layout(xaxis_rangeslider_visible=False, height=600, template="plotly_white", margin=dict(t=30, b=10, l=10, r=10), hovermode="x unified")
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"terminal_stock_chart_{clean_title}")
 
                         tab1, tab2 = st.tabs(["📈 AI 神經網絡戰略分析", "📰 全球市場事件與情緒掃描"])
                         
