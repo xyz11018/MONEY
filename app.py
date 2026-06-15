@@ -45,7 +45,6 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 
-/* 機構級模塊深邃標題 */
 .market-header { 
     padding: 16px 24px; border-radius: 8px; font-weight: 900; 
     font-size: 1.3rem; color: #ffffff !important;
@@ -57,19 +56,13 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 .tw-market { border-left-color: #10b981; }
 .us-market { border-left-color: #3b82f6; }
 
-/* 華爾街科技感懸浮卡片 */
 .pro-card { 
     background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; 
     padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); height: 100%;
     transition: all 0.25s ease-in-out;
 }
-.pro-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 20px -4px rgba(0,0,0,0.08);
-    border-color: #cbd5e1;
-}
+.pro-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -4px rgba(0,0,0,0.08); border-color: #cbd5e1; }
 
-/* 數據核心卡片 */
 .kpi-card { 
     background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; 
     padding: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); 
@@ -78,7 +71,6 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 }
 .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 15px -3px rgba(0,0,0,0.06); }
 
-/* 專業看盤字體與排版 */
 .ticker-display { font-size: 1.85rem; font-weight: 900; line-height: 1.1; color: #0f172a; letter-spacing: -0.5px; }
 .stock-name-display { font-size: 1rem; color: #475569; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
 .price-display { font-size: 1.45rem; font-weight: 800; color: #0f172a; margin-top: 6px; font-variant-numeric: tabular-nums; }
@@ -87,7 +79,6 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 .data-label { font-size: 0.75rem; color: #64748b; margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
 .data-value { font-size: 1.2rem; font-weight: 800; color: #1e293b; font-variant-numeric: tabular-nums; }
 
-/* 專業決策指示徽章 */
 .badge-buy { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #ecfdf5; color: #166534; font-weight: 900; font-size: 0.85rem; border: 1px solid #a7f3d0; text-transform: uppercase; letter-spacing: 0.5px;}
 .badge-sell { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #fef2f2; color: #991b1b; font-weight: 900; font-size: 0.85rem; border: 1px solid #fecaca; text-transform: uppercase; letter-spacing: 0.5px;}
 .badge-hold { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #f8fafc; color: #475569; font-weight: 900; font-size: 0.85rem; border: 1px solid #e2e8f0; text-transform: uppercase; letter-spacing: 0.5px;}
@@ -98,29 +89,37 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 .modebar { display: none !important; }
 hr { border-color: #e2e8f0; margin: 2rem 0; border-style: dashed; }
 
-/* 導覽分頁 Tabs 法人美化 */
 .stTabs [data-baseweb="tab-list"] { gap: 12px; border-bottom: 2px solid #cbd5e1; padding-bottom: 0px;}
 .stTabs [data-baseweb="tab"] { height: 52px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 28px; color: #64748b; font-weight: 700; border: none; font-size: 0.95rem; letter-spacing: 0.5px;}
 .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 智慧代碼正名資料庫
+# 🚀 智慧代碼正名資料庫 (深度擴展版)
 STOCK_NAME_DICT = {
-    "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2330": "台積電", "2454": "聯發科",
-    "2317": "鴻海", "2603": "長榮", "0050": "元大台灣50", "00631L": "元大台灣50正2",
-    "0056": "元大高股息", "00878": "國泰永續高股息", "6669": "緯穎", "2382": "廣達",
-    "2303": "聯電", "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2609": "陽明",
-    "3231": "緯創", "2308": "台達電", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息",
-    "5498": "凱崴", "2356": "英業達", "2324": "仁寶", "3034": "聯詠", "2379": "瑞昱",
-    "6548": "長華科", "00915": "凱基優選高股息30", "00713": "元大台灣高息低波",
-    "00939": "統一台灣高息動能", "00940": "元大台灣價值高息", "006208": "富邦台50",
-    "00679B": "元大美債20年", "00687B": "國泰20年美債", "00937B": "群益ESG投等債20+",
-    "00936": "台新永續高息中小", "00772B": "中信高評級公司債",
+    # 權值股
+    "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2382": "廣達", "2308": "台達電",
+    "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2603": "長榮", "3231": "緯創",
+    "6669": "緯穎", "2303": "聯電", "2882": "國泰金", "2886": "兆豐金", "3711": "日月光投控",
+    # 科技與中小型
+    "6285": "啟碁", "2344": "華邦電", "2337": "旺宏", "2356": "英業達", "2324": "仁寶", 
+    "3034": "聯詠", "2379": "瑞昱", "6548": "長華科", "2609": "陽明", "5498": "凱崴",
+    # 台股原型 ETF
+    "0050": "元大台灣50", "006208": "富邦台50", "0052": "富邦科技", "0051": "元大中型100", 
+    "00692": "富邦公司治理", "00881": "富邦台灣半導體", "00891": "中信關鍵半導體", "00892": "富邦台灣核心半導體",
+    # 台股高股息 ETF
+    "0056": "元大高股息", "00878": "國泰永續高股息", "00919": "群益台灣精選高息", "00929": "復華台灣科技優息", 
+    "00915": "凱基優選高股息30", "00713": "元大台灣高息低波", "00939": "統一台灣高息動能", "00940": "元大台灣價值高息", "00936": "台新永續高息中小",
+    # 台股槓桿/反向 ETF
+    "00631L": "元大台灣50正2", "00632R": "元大台灣50反1", "00670L": "富邦NASDAQ正2", "00671R": "富邦NASDAQ反1",
+    "00683L": "群益深証中小+2", "00633L": "富邦上証正2", "00655L": "國泰中國A50正2",
+    # 美債 ETF
+    "00679B": "元大美債20年", "00687B": "國泰20年美債", "00937B": "群益ESG投等債20+", "00772B": "中信高評級公司債",
+    # 美股與全球 ETF
     "AAPL": "蘋果 (Apple)", "MSFT": "微軟 (Microsoft)", "NVDA": "輝達 (NVIDIA)", 
     "TSLA": "特斯拉 (Tesla)", "AMD": "超微 (AMD)", "QQQ": "納斯達克100 ETF", 
-    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF", "VOO": "標普500 ETF", 
-    "TQQQ": "納斯達克3倍做多", "QLD": "納斯達克2倍做多"
+    "VTI": "全美股市 ETF", "SCHD": "美國紅利 ETF", "VOO": "標普500 ETF", "SPY": "標普500 ETF",
+    "TQQQ": "納斯達克3倍做多", "QLD": "納斯達克2倍做多", "SOXL": "半導體3倍做多", "SQQQ": "納斯達克3倍做空"
 }
 
 DB_FILE = "portfolio_db.json"
@@ -129,6 +128,7 @@ DB_FILE = "portfolio_db.json"
 # 2. 🛡️ 智慧識別與核心演算引擎
 # ==========================================
 def resolve_suffix(base_tk):
+    base_tk = str(base_tk).upper().strip()
     if base_tk.endswith('.TW') or base_tk.endswith('.TWO'): return base_tk
     if not base_tk[0].isdigit() and not base_tk.startswith('00'): return base_tk
     for ext in [".TW", ".TWO"]:
@@ -147,10 +147,18 @@ def smart_resolve_ticker(user_input, api_key=""):
         idx_map = {"^TWII": "台灣加權指數", "^IXIC": "那斯達克", "^GSPC": "標普500", "^SOX": "費城半導體", "^VIX": "恐慌指數"}
         return t, idx_map.get(t, "大盤指數")
 
-    clean_t = t.split('.')[0]
-    if clean_t in STOCK_NAME_DICT: return resolve_suffix(clean_t), STOCK_NAME_DICT[clean_t]
+    # 💡 暴力字串剝離引擎：精準提取代碼 (如 "0052 富邦科技" -> "0052")
+    potential_tk = t
+    match = re.search(r'([A-Z0-9]{2,8})', t)
+    if match:
+        potential_tk = match.group(1)
+
+    if potential_tk in STOCK_NAME_DICT: 
+        return resolve_suffix(potential_tk), STOCK_NAME_DICT[potential_tk]
+        
     for tk, name in STOCK_NAME_DICT.items():
-        if t == name.upper() or t in name.upper(): return resolve_suffix(tk), name
+        if t == name.upper() or name.upper() in t: 
+            return resolve_suffix(tk), name
 
     ticker_result, name_result = "", t
     if api_key:
@@ -160,19 +168,19 @@ def smart_resolve_ticker(user_input, api_key=""):
             res = model.generate_content(f"台灣股市系統。輸入：「{t}」。輸出「代碼(純數字)+後綴」及「中文簡稱」，逗號分隔。找不到輸出「無」。").text.strip().upper()
             if res != "無" and "," in res:
                 ticker_result, name_result = res.split(',')[0].strip(), res.split(',')[1].strip()
+                return resolve_suffix(ticker_result.split('.')[0]), name_result
         except: pass
-            
-    if ticker_result:
-        valid_tk = resolve_suffix(ticker_result)
-        if valid_tk: return valid_tk, name_result
 
     try:
-        r = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(t)}&lang=zh-Hant-TW&region=TW", headers=yf_session.headers, timeout=3)
+        r = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(potential_tk)}&lang=zh-Hant-TW&region=TW", headers=yf_session.headers, timeout=3)
         if r.status_code == 200 and r.json().get('quotes'):
-            return r.json()['quotes'][0].get('symbol', '').upper(), r.json()['quotes'][0].get('shortname', clean_t)
+            return r.json()['quotes'][0].get('symbol', '').upper(), r.json()['quotes'][0].get('shortname', potential_tk)
     except: pass
     
-    if re.match(r'^[A-Z0-9]+$', clean_t): return resolve_suffix(clean_t), clean_t
+    # 終極防呆：硬核提取匹配
+    if potential_tk and re.match(r'^[A-Z0-9]+$', potential_tk): 
+        return resolve_suffix(potential_tk), t if t != potential_tk else f"標的 {potential_tk}"
+        
     return "", ""
 
 def get_leverage(ticker):
@@ -196,12 +204,14 @@ def fetch_market_data(ticker):
         t_obj = yf.Ticker(ticker, session=yf_session)
         realtime_price = float(t_obj.fast_info.get('lastPrice', 0) or 0)
         df = yf.download(ticker, period="10y", progress=False, session=yf_session)
+        
         if not df.empty:
             if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
             df.dropna(subset=['Close'], inplace=True)
-            closes, highs, lows = df['Close'], df['High'], df['Low']
             
-            if not closes.empty: 
+            if not df.empty:
+                closes, highs, lows = df['Close'], df['High'], df['Low']
+                
                 price = realtime_price if realtime_price > 0 else float(closes.iloc[-1] or 0)
                 date_str = "即時市場報價" if realtime_price > 0 else closes.index[-1].strftime("%Y-%m-%d")
                 
@@ -229,6 +239,13 @@ def fetch_market_data(ticker):
                     "price": price, "date": date_str, "ma50": ma50, "ma200": ma200, "high52w": high52w, "drawdown": drawdown, 
                     "bias": bias, "rsi": current_rsi, "kd_k": current_k, "history_close": closes
                 }
+        
+        # 🛡️ 核心防呆：如果 K 線缺失，但我們抓得到即時報價，強制允許建倉！
+        if realtime_price > 0:
+            return {
+                "price": realtime_price, "date": "即時報價 (K線缺失)", "ma50": realtime_price, "ma200": realtime_price, 
+                "high52w": realtime_price, "drawdown": 0.0, "bias": 0.0, "rsi": 50.0, "kd_k": 50.0, "history_close": pd.Series([realtime_price], dtype=float)
+            }
     except: pass
     return None
 
@@ -388,7 +405,6 @@ current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
-# 清理記憶體遺留之錯誤代碼
 for scheme in db_data["schemes"].values():
     scheme["lots"] = [lot for lot in scheme["lots"] if str(lot.get("ticker", "")).strip().upper() not in ["", "NAN", "NONE"]]
 
@@ -761,7 +777,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 ma50_v = item.get("ma50", 1)
                 ma200_v = item.get("ma200", 1)
                 
-                # VIX 動態權重降載
                 dynamic_tgt_p = tgt_p
                 if lev >= 2.0:
                     if current_vix > 30.0: dynamic_tgt_p = 0.0
@@ -843,7 +858,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     item_pnl_color = "#10b981" if pnl_ntd >= 0 else "#ef4444"
                     item_pnl_sign = "+" if pnl_ntd >= 0 else ""
                     
-                    # 💡 核心優化：第一欄位最顯眼處加上「庫存股數」
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {n_p:.2f}</div><div style='margin-top:6px; font-size:0.95rem; font-weight:900; color:#0f172a;'>📦 庫存: {fmt_money(shares_qty)} 股</div><div class='date-display'>平均建倉成本: {item.get('buy_price',0):.2f}</div>", unsafe_allow_html=True)
                     
                     c[1].markdown(f"<div class='data-label'>建倉成本 (Cost Basis):</div><div class='data-value'>NTD {fmt_money(item.get('net_buy_cost', 0))}</div><div class='data-label' style='margin-top:12px;'>預估淨變現市值 (Value):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div>", unsafe_allow_html=True)
@@ -967,7 +981,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
 
             st.markdown("---")
             st.subheader("🤖 AI 量化戰略兵推 (Quant Intelligence)")
-            st.info("💡 點擊下方按鈕，AI 首席分析大腦將綜合審視您的「長短天期美債利差倒掛狀態」、「50MA/200MA均線交叉」與「倉位偏離度」，下達頂級決策邏輯。")
+            st.info("💡 點擊下方按鈕，AI 將自動對持倉偏離與技術指標(均線/KD/RSI)進行全域動態對沖推演。")
             
             if st.button(f"✨ 啟動 Gemini 演算法兵推", key=f"ai_btn_{market_label}", type="primary", use_container_width=True):
                 if not MY_API_KEY: st.warning("⚠️ 系統連線失敗：請先配置您的 Gemini API Key。")
@@ -1124,7 +1138,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
                                 sec_str = info.get('sector', '未提供')
                             except: pe_str, yd_str, sec_str = "無/虧損", "無配息", "未提供"
                             cc1.markdown(f"<div class='pro-card'><div class='data-label'>🏢 系統歸屬板塊 (Sector)</div><div class='data-value' style='font-size:1.8rem;'>{sec_str}</div></div>", unsafe_allow_html=True)
-                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面矩陣 (Fundamentals)</div><div class='data-value' style='font-size:1.6rem;'>PE: {pe_str}</div><div style='color:#64748b; font-size:1rem; font-weight:700; margin-top:4px;'>股息率 (Yield): {yd_str}</div></div>", unsafe_allow_html=True)
+                            cc2.markdown(f"<div class='pro-card'><div class='data-label'>🏦 核心基本面矩陣 (Fundamentals)</div><div class='data-value' style='font-size:1.6rem;'>PE: {pe_str}</div><div style='color:#64748b; font-size:1rem; font-weight:700; margin-top:4px;'>股息率 (Div. Yield): {yd_str}</div></div>", unsafe_allow_html=True)
                         
                         cc3.markdown(f"<div class='pro-card'><div class='data-label'>⚡ 短線技術動能掃描 (RSI)</div><div class='data-value' style='font-size:1.8rem;'>{rsi_val:.1f}</div><div style='color:#0f172a; font-size:1rem; font-weight:700; margin-top:4px;'>系統診斷: {rsi_status}</div></div>", unsafe_allow_html=True)
                         
@@ -1144,7 +1158,6 @@ elif app_mode == "🔍 全球宏觀市場終端":
                             fig.update_yaxes(showticklabels=False, row=2, col=1)
                             
                         fig.update_layout(xaxis_rangeslider_visible=False, height=600, template="plotly_white", margin=dict(t=30, b=10, l=10, r=10), hovermode="x unified")
-                        
                         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"terminal_stock_chart_{clean_title}")
 
                         tab1, tab2 = st.tabs(["📈 AI 神經網絡戰略分析", "📰 全球市場事件與情緒掃描"])
