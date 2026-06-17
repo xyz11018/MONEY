@@ -2,3 +2,4 @@ yfinance
 plotly
 pandas
 google-generativeai
+firebase-admin
