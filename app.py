@@ -128,23 +128,41 @@ STOCK_NAME_DICT = {
 TECH_CONCENTRATION_TICKERS = ["2330", "2454", "2382", "3231", "6669", "3034", "2379", "0052", "00881", "AAPL", "MSFT", "NVDA", "AMD", "QQQ", "TQQQ", "SOXL", "QLD"]
 
 # ==========================================
-# 🛡️ 智慧混合式資料庫引擎 (Hybrid DB Engine)
+# 🛡️ 智慧混合式資料庫引擎 (自我修復防呆版)
 # ==========================================
 DB_FILE = "portfolio_db.json"
 USE_FIREBASE = False
 
 try:
     if "firebase" in st.secrets:
-        if not firebase_admin._apps:
-            cred_dict = dict(st.secrets["firebase"])
-            cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
+        # 💡 自動清洗防呆：把多重 https:// 全部清掉，確保網址純淨
+        raw_db_url = st.secrets["firebase"].get("databaseURL", "")
+        clean_db_url = raw_db_url.replace("https://https://", "https://").strip()
+        if not clean_db_url.startswith("https://"):
+            clean_db_url = "https://" + clean_db_url
+            
+        cred_dict = dict(st.secrets["firebase"])
+        cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
+        
+        # 💡 強制記憶體重置：檢查舊有連線是否卡住錯誤網址
+        need_init = True
+        if firebase_admin._apps:
+            app = firebase_admin.get_app()
+            if app.options.get('databaseURL') == clean_db_url:
+                need_init = False
+            else:
+                # 發現網址更新！無情殺掉舊連線
+                firebase_admin.delete_app(app)
+                
+        if need_init:
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred, {
-                'databaseURL': st.secrets["firebase"]["databaseURL"]
+                'databaseURL': clean_db_url
             })
+            
         USE_FIREBASE = True
 except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端資料庫未設定或金鑰錯誤，目前以「本機離線模式」安全運行。")
+    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」保命。錯誤: {e}")
     USE_FIREBASE = False
 
 def load_portfolio():
@@ -162,16 +180,14 @@ def load_portfolio():
                 ref.set(default_data)
                 return default_data
             
-            # 補齊舊資料可能缺少的鍵值
             if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
             if "settings" not in data: data["settings"] = {"line_token": ""}
             if "schemes" not in data: data["schemes"] = default_data["schemes"]
             return data
         except Exception as e:
-            st.error(f"雲端資料讀取失敗，暫時載入預設值: {e}")
+            st.error(f"雲端資料讀取失敗，載入預設值: {e}")
             return default_data
     else:
-        # Fallback 到本機 JSON 模式
         if os.path.exists(DB_FILE):
             try:
                 with open(DB_FILE, "r", encoding="utf-8") as f: 
@@ -1495,7 +1511,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         last_close = float(df['Close'].dropna().iloc[-1]) if not df['Close'].dropna().empty else 0.0
                         ma200_val = float(df['MA3'].dropna().iloc[-1]) if not df['MA3'].dropna().empty else last_close
                         high_52w = float(df['High'].max()) if not pd.isna(df['High'].max()) else last_close
-                        dd_pct = ((last_close - high_52w) / high_52w) * 100 if high_52w > 0 else 0.0
+                        dd_pct = ((last_close - high_52w) / high_52w) * 100 if high52w > 0 else 0.0
 
                         st.markdown("### 📊 量化多維戰略儀表板 (Market Metrics)")
                         cc1, cc2, cc3 = st.columns(3)
