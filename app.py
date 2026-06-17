@@ -11,14 +11,27 @@ import re
 import numpy as np
 import requests
 import google.generativeai as genai
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import db
 
 # ==========================================
-# 🔑 Gemini 全球操盤決策大腦 API 讀取機制
+# 🔑 Gemini 與 LINE Notify 權限機制
 # ==========================================
 try:
     MY_API_KEY = st.secrets["GEMINI_API_KEY"]
 except:
     MY_API_KEY = ""
+
+def send_line_notify(token, msg):
+    url = 'https://notify-api.line.me/api/notify'
+    headers = {'Authorization': f'Bearer {token}'}
+    data = {'message': f'\n{msg}'}
+    try:
+        r = requests.post(url, headers=headers, data=data)
+        return r.status_code == 200
+    except:
+        return False
 
 # ==========================================
 # 0. 核心抗封鎖安全通訊引擎
@@ -114,7 +127,73 @@ STOCK_NAME_DICT = {
 
 TECH_CONCENTRATION_TICKERS = ["2330", "2454", "2382", "3231", "6669", "3034", "2379", "0052", "00881", "AAPL", "MSFT", "NVDA", "AMD", "QQQ", "TQQQ", "SOXL", "QLD"]
 
+# ==========================================
+# 🛡️ 智慧混合式資料庫引擎 (Hybrid DB Engine)
+# ==========================================
 DB_FILE = "portfolio_db.json"
+USE_FIREBASE = False
+
+try:
+    if "firebase" in st.secrets:
+        if not firebase_admin._apps:
+            cred_dict = dict(st.secrets["firebase"])
+            cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
+            cred = credentials.Certificate(cred_dict)
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': st.secrets["firebase"]["databaseURL"]
+            })
+        USE_FIREBASE = True
+except Exception as e:
+    st.sidebar.warning(f"⚠️ 雲端資料庫未設定或金鑰錯誤，目前以「本機離線模式」安全運行。")
+    USE_FIREBASE = False
+
+def load_portfolio():
+    default_data = {
+        "global_goals": {"target_amt": 20000000, "target_years": 10}, 
+        "settings": {"line_token": ""},
+        "schemes": {"🎯 台股主力配置": {"market": "TW", "lots": [], "targets": {}}, "🎯 美股主力配置": {"market": "US", "lots": [], "targets": {}}}
+    }
+    
+    if USE_FIREBASE:
+        try:
+            ref = db.reference('/quant_portfolio')
+            data = ref.get()
+            if data is None:
+                ref.set(default_data)
+                return default_data
+            
+            # 補齊舊資料可能缺少的鍵值
+            if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
+            if "settings" not in data: data["settings"] = {"line_token": ""}
+            if "schemes" not in data: data["schemes"] = default_data["schemes"]
+            return data
+        except Exception as e:
+            st.error(f"雲端資料讀取失敗，暫時載入預設值: {e}")
+            return default_data
+    else:
+        # Fallback 到本機 JSON 模式
+        if os.path.exists(DB_FILE):
+            try:
+                with open(DB_FILE, "r", encoding="utf-8") as f: 
+                    data = json.load(f)
+                    if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
+                    if "settings" not in data: data["settings"] = {"line_token": ""}
+                    if "schemes" in data: return data
+            except: pass
+        return default_data
+
+def save_portfolio(data):
+    if USE_FIREBASE:
+        try:
+            ref = db.reference('/quant_portfolio')
+            ref.set(data)
+        except Exception as e:
+            st.error(f"寫入雲端資料庫失敗: {e}")
+    else:
+        with open(DB_FILE, "w", encoding="utf-8") as f: 
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
+db_data = load_portfolio()
 
 # ==========================================
 # 2. 🛡️ 智慧識別與核心演算引擎
@@ -232,27 +311,6 @@ def fetch_market_data(ticker):
             }
     except: pass
     return None
-
-def load_portfolio():
-    default_data = {
-        "global_goals": {"target_amt": 20000000, "target_years": 10}, 
-        "settings": {"line_token": ""},
-        "schemes": {"🎯 台股主力配置": {"market": "TW", "lots": [], "targets": {}}, "🎯 美股主力配置": {"market": "US", "lots": [], "targets": {}}}
-    }
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f: 
-                data = json.load(f)
-                if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
-                if "settings" not in data: data["settings"] = {"line_token": ""}
-                if "schemes" in data: return data
-        except: pass
-    return default_data
-
-def save_portfolio(data):
-    with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
-
-db_data = load_portfolio()
 
 def aggregate_lots(lots, targets):
     agg = {}
@@ -419,21 +477,34 @@ current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
-# 記憶體清理
-for scheme in db_data["schemes"].values():
-    scheme["lots"] = [lot for lot in scheme["lots"] if str(lot.get("ticker", "")).strip().upper() not in ["", "NAN", "NONE"]]
-
 # ==========================================
-# 📊 左側邊欄：總經面板
+# 📊 左側邊欄：總經面板與 LINE Notify
 # ==========================================
 st.sidebar.title("🏦 Quant Terminal")
 st.sidebar.markdown(f"📈 **宏觀匯率 USD/TWD：** `{current_rate:.2f}`")
+
+# 📲 LINE Notify 設定區
+with st.sidebar.expander("📲 LINE Notify 警報推播設定"):
+    current_line_token = db_data.get("settings", {}).get("line_token", "")
+    new_token = st.text_input("輸入 LINE Notify Token", value=current_line_token, type="password")
+    if new_token != current_line_token:
+        db_data["settings"]["line_token"] = new_token
+        save_portfolio(db_data)
+        st.rerun()
+    if st.button("🔔 測試發送警報", use_container_width=True):
+        if not new_token: st.warning("請先輸入 Token")
+        else:
+            success = send_line_notify(new_token, "✅ Quant Terminal 警報系統連線成功！您的量化大腦已上線。")
+            if success: st.success("發送成功！請檢查手機。")
+            else: st.error("發送失敗，請檢查 Token 是否正確。")
+
+st.sidebar.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
 if yield_spread < 0: macro_color, macro_status = "#ef4444", "🚨 倒掛警戒 (防守)"
 else: macro_color, macro_status = "#10b981", "🟢 擴張格局 (正常)"
 st.sidebar.markdown(f"""
 <div style='padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid {macro_color}; border-radius:8px; margin-bottom:12px;'>
-    <div style='color:#475569 !important; font-size:0.75rem; font-weight:700; margin-bottom:4px; text-transform:uppercase;'>🏛 McKay 利差 (10Y-3M)</div>
+    <div style='color:#475569 !important; font-size:0.75rem; font-weight:700; margin-bottom:4px; text-transform:uppercase;'>🏛 利差 (10Y-3M)</div>
     <div style='color:#0f172a !important; font-size:1.15rem; font-weight:900;'>{yield_spread:+.2f}% <span style='font-size:0.75rem; color:{macro_color}; font-weight:800;'><br>{macro_status}</span></div>
 </div>
 """, unsafe_allow_html=True)
@@ -459,13 +530,17 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
+today = datetime.date.today()
+if today.day >= 10 and today.day <= 15:
+    st.sidebar.warning("📅 **本週總經預警**：\n即將公布 CPI 或 PPI 數據，請留意市場雙向洗盤，嚴禁重壓高槓桿部位。")
+
 if MY_API_KEY: genai.configure(api_key=MY_API_KEY)
 
 app_mode = st.sidebar.radio("系統導覽 (Modules)：", ["🏠 宏觀資產矩陣 (Dashboard)", "🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量化倉位", "💸 現金流與稅務水庫", "🧪 戰略回測實驗室", "🔍 全球宏觀市場終端", "📖 系統操作指南 (User Manual)"])
 st.sidebar.markdown("---")
 
 # ==========================================
-# 📖 新增分頁：系統操作與戰術手冊
+# 📖 新增：系統操作指南 (User Manual)
 # ==========================================
 if app_mode == "📖 系統操作指南 (User Manual)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left-color: #64748b;'>📖 量化終端實戰操作指南 (Quant Playbook)</div>", unsafe_allow_html=True)
