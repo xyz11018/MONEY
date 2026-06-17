@@ -128,14 +128,13 @@ STOCK_NAME_DICT = {
 TECH_CONCENTRATION_TICKERS = ["2330", "2454", "2382", "3231", "6669", "3034", "2379", "0052", "00881", "AAPL", "MSFT", "NVDA", "AMD", "QQQ", "TQQQ", "SOXL", "QLD"]
 
 # ==========================================
-# 🛡️ 智慧混合式資料庫引擎 (自我修復防呆版)
+# 🛡️ 智慧混合式資料庫引擎 (含自動資料修復 Data Healer)
 # ==========================================
 DB_FILE = "portfolio_db.json"
 USE_FIREBASE = False
 
 try:
     if "firebase" in st.secrets:
-        # 💡 自動清洗防呆：把多重 https:// 全部清掉，確保網址純淨
         raw_db_url = st.secrets["firebase"].get("databaseURL", "")
         clean_db_url = raw_db_url.replace("https://https://", "https://").strip()
         if not clean_db_url.startswith("https://"):
@@ -144,14 +143,12 @@ try:
         cred_dict = dict(st.secrets["firebase"])
         cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
         
-        # 💡 強制記憶體重置：檢查舊有連線是否卡住錯誤網址
         need_init = True
         if firebase_admin._apps:
             app = firebase_admin.get_app()
             if app.options.get('databaseURL') == clean_db_url:
                 need_init = False
             else:
-                # 發現網址更新！無情殺掉舊連線
                 firebase_admin.delete_app(app)
                 
         if need_init:
@@ -169,34 +166,44 @@ def load_portfolio():
     default_data = {
         "global_goals": {"target_amt": 20000000, "target_years": 10}, 
         "settings": {"line_token": ""},
-        "schemes": {"🎯 台股主力配置": {"market": "TW", "lots": [], "targets": {}}, "🎯 美股主力配置": {"market": "US", "lots": [], "targets": {}}}
+        "schemes": {
+            "🎯 台股主力配置": {"market": "TW", "lots": [], "targets": {}}, 
+            "🎯 美股主力配置": {"market": "US", "lots": [], "targets": {}}
+        }
     }
     
+    data = None
     if USE_FIREBASE:
         try:
             ref = db.reference('/quant_portfolio')
             data = ref.get()
-            if data is None:
-                ref.set(default_data)
-                return default_data
-            
-            if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
-            if "settings" not in data: data["settings"] = {"line_token": ""}
-            if "schemes" not in data: data["schemes"] = default_data["schemes"]
-            return data
         except Exception as e:
             st.error(f"雲端資料讀取失敗，載入預設值: {e}")
-            return default_data
     else:
         if os.path.exists(DB_FILE):
             try:
                 with open(DB_FILE, "r", encoding="utf-8") as f: 
                     data = json.load(f)
-                    if "global_goals" not in data: data["global_goals"] = {"target_amt": 20000000, "target_years": 10}
-                    if "settings" not in data: data["settings"] = {"line_token": ""}
-                    if "schemes" in data: return data
             except: pass
-        return default_data
+
+    if not data:
+        data = default_data
+
+    # 🛡️ 資料庫防呆自動補齊機制 (Data Healer)：確保舊檔案不會噴出 KeyError
+    if "global_goals" not in data: data["global_goals"] = default_data["global_goals"]
+    if "settings" not in data: data["settings"] = default_data["settings"]
+    if "schemes" not in data: 
+        data["schemes"] = default_data["schemes"]
+    else:
+        for s_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
+            if s_name not in data["schemes"]:
+                data["schemes"][s_name] = default_data["schemes"][s_name]
+            if "lots" not in data["schemes"][s_name]:
+                data["schemes"][s_name]["lots"] = []
+            if "targets" not in data["schemes"][s_name]:
+                data["schemes"][s_name]["targets"] = {}
+
+    return data
 
 def save_portfolio(data):
     if USE_FIREBASE:
@@ -499,7 +506,6 @@ current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 st.sidebar.title("🏦 Quant Terminal")
 st.sidebar.markdown(f"📈 **宏觀匯率 USD/TWD：** `{current_rate:.2f}`")
 
-# 📲 LINE Notify 設定區
 with st.sidebar.expander("📲 LINE Notify 警報推播設定"):
     current_line_token = db_data.get("settings", {}).get("line_token", "")
     new_token = st.text_input("輸入 LINE Notify Token", value=current_line_token, type="password")
@@ -586,7 +592,7 @@ if app_mode == "📖 系統操作指南 (User Manual)":
         * **🕸️ 市場寬度 (S&P500)**：判斷現在是「真牛市」還是「拉抬權值股的假牛市」。若破線，系統會拒絕加碼槓桿。
 
         ### 2. 認識個股面板的「戰鬥指示燈」
-        在 `📊 動態監控矩陣` 每個個股的最右側卡片，系統會比對您的「目標權重」與「實際市值」，給出以下精確指令：
+        在 `📊 🛡️ 機構級量化風控與盯盤中心` 每個個股的最右側卡片，系統會比對您的「目標權重」與「實際市值」，給出以下精確指令：
         * <span class='badge-buy'>🟢 BUY TO OPEN</span>：比例不足，且均線多頭，建議立刻買進補齊。
         * <span class='badge-sell'>🔴 SELL TO CLOSE</span>：比例過高，建議賣出部分停利。
         * <span class='badge-hold'>🟡 MA BEARISH 暫緩</span>：雖然您的比例不足，但目前該股處於「均線死亡交叉（空頭）」，系統為保護您，**強制鎖定買進建議**，避免左側接刀。
@@ -945,7 +951,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
         if lots_df.empty: lots_df = pd.DataFrame(columns=["動作", "代碼", "數量", "價格/總息", "日期", "決策備註"])
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
         
-        if st.button(f"📌 確認同步並寫入雲端資料庫", type="primary", key=f"save_btn_{market_label}"):
+        if st.button(f"📌 確認同步並寫入資料庫", type="primary", key=f"save_btn_{market_label}"):
             with st.spinner('正在同步儲存庫...'):
                 new_lots = []
                 for _, row in edited_lots.iterrows():
@@ -1511,7 +1517,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         last_close = float(df['Close'].dropna().iloc[-1]) if not df['Close'].dropna().empty else 0.0
                         ma200_val = float(df['MA3'].dropna().iloc[-1]) if not df['MA3'].dropna().empty else last_close
                         high_52w = float(df['High'].max()) if not pd.isna(df['High'].max()) else last_close
-                        dd_pct = ((last_close - high_52w) / high_52w) * 100 if high52w > 0 else 0.0
+                        dd_pct = ((last_close - high_52w) / high_52w) * 100 if high_52w > 0 else 0.0
 
                         st.markdown("### 📊 量化多維戰略儀表板 (Market Metrics)")
                         cc1, cc2, cc3 = st.columns(3)
