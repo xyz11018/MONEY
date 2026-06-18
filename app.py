@@ -56,7 +56,7 @@ def fmt_money(val, decimals=0):
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
-
+html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; }
 .market-header { 
     padding: 16px 24px; border-radius: 8px; font-weight: 900; 
     font-size: 1.3rem; color: #ffffff !important;
@@ -67,45 +67,27 @@ st.markdown("""
 }
 .tw-market { border-left-color: #10b981; }
 .us-market { border-left-color: #3b82f6; }
-
-.pro-card { 
-    background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px; 
-    padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%;
-    transition: all 0.25s ease-in-out;
-}
+.pro-card { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); height: 100%; transition: all 0.25s ease-in-out; }
 .pro-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -4px rgba(0,0,0,0.08); border-color: #cbd5e1 !important; }
-
-.kpi-card { 
-    background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px; 
-    padding: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); 
-    display: flex; flex-direction: column; justify-content: center;
-    transition: all 0.2s ease;
-}
+.kpi-card { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px; padding: 24px; box-shadow: 0 2px 6px rgba(0,0,0,0.02); display: flex; flex-direction: column; justify-content: center; transition: all 0.2s ease; }
 .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 15px -3px rgba(0,0,0,0.06); }
-
 .ticker-display { font-size: 1.85rem; font-weight: 900; line-height: 1.1; color: #0f172a !important; letter-spacing: -0.5px; }
 .stock-name-display { font-size: 1rem; color: #475569 !important; font-weight: 700; margin-top: 4px; margin-bottom: 8px; }
 .price-display { font-size: 1.45rem; font-weight: 800; color: #0f172a !important; margin-top: 6px; font-variant-numeric: tabular-nums; }
 .date-display { font-size: 0.8rem; color: #64748b !important; margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;}
-
 .data-label { font-size: 0.75rem; color: #475569 !important; margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; }
 .data-value { font-size: 1.2rem; font-weight: 800; color: #0f172a !important; font-variant-numeric: tabular-nums; }
-
 .badge-buy { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #ecfdf5; color: #047857; font-weight: 900; font-size: 0.85rem; border: 1px solid #10b981; text-transform: uppercase; letter-spacing: 0.5px;}
 .badge-sell { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #fde8e8; color: #b91c1c; font-weight: 900; font-size: 0.85rem; border: 1px solid #f87171; text-transform: uppercase; letter-spacing: 0.5px;}
 .badge-hold { display: inline-block; padding: 6px 14px; border-radius: 6px; background-color: #f1f5f9; color: #475569; font-weight: 900; font-size: 0.85rem; border: 1px solid #cbd5e1; text-transform: uppercase; letter-spacing: 0.5px;}
-
 .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 6px solid #0f172a; padding: 24px; border-radius: 12px; margin-top: 15px; margin-bottom: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.03); color: #0f172a !important; }
 .action-box h4, .action-box div, .action-box li { color: #0f172a !important; }
-
 .stNumberInput input { font-weight: 800 !important; color: #0f172a !important; font-size: 1.1rem !important;}
 .modebar { display: none !important; }
 hr { border-color: #e2e8f0; margin: 2rem 0; border-style: dashed; }
-
 .stTabs [data-baseweb="tab-list"] { gap: 12px; border-bottom: 2px solid #cbd5e1; padding-bottom: 0px;}
 .stTabs [data-baseweb="tab"] { height: 52px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 28px; color: #64748b; font-weight: 700; border: none; font-size: 0.95rem; letter-spacing: 0.5px;}
 .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; border-bottom: none !important; }
-
 .manual-highlight { background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: 700; color: #0f172a; font-family: monospace; border: 1px solid #e2e8f0; }
 </style>
 """, unsafe_allow_html=True)
@@ -136,8 +118,7 @@ try:
     if "firebase" in st.secrets:
         raw_db_url = st.secrets["firebase"].get("databaseURL", "")
         clean_db_url = raw_db_url.replace("https://https://", "https://").strip()
-        if not clean_db_url.startswith("https://"):
-            clean_db_url = "https://" + clean_db_url
+        if not clean_db_url.startswith("https://"): clean_db_url = "https://" + clean_db_url
             
         cred_dict = dict(st.secrets["firebase"])
         cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
@@ -145,16 +126,12 @@ try:
         need_init = True
         if firebase_admin._apps:
             app = firebase_admin.get_app()
-            if app.options.get('databaseURL') == clean_db_url:
-                need_init = False
-            else:
-                firebase_admin.delete_app(app)
+            if app.options.get('databaseURL') == clean_db_url: need_init = False
+            else: firebase_admin.delete_app(app)
                 
         if need_init:
             cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': clean_db_url
-            })
+            firebase_admin.initialize_app(cred, {'databaseURL': clean_db_url})
             
         USE_FIREBASE = True
 except Exception as e:
@@ -176,17 +153,15 @@ def load_portfolio():
         try:
             ref = db.reference('/quant_portfolio')
             data = ref.get()
-        except Exception as e: pass
+        except: pass
     else:
         if os.path.exists(DB_FILE):
             try:
-                with open(DB_FILE, "r", encoding="utf-8") as f: 
-                    data = json.load(f)
+                with open(DB_FILE, "r", encoding="utf-8") as f: data = json.load(f)
             except: pass
 
     if not data: data = default_data
 
-    # 🛡️ 資料庫防呆自動補齊機制
     if "global_goals" not in data: data["global_goals"] = default_data["global_goals"]
     if "settings" not in data: data["settings"] = default_data["settings"]
     if "schemes" not in data: 
@@ -206,8 +181,7 @@ def save_portfolio(data):
             ref.set(data)
         except Exception as e: st.error(f"寫入雲端資料庫失敗: {e}")
     else:
-        with open(DB_FILE, "w", encoding="utf-8") as f: 
-            json.dump(data, f, ensure_ascii=False, indent=4)
+        with open(DB_FILE, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
 db_data = load_portfolio()
 
@@ -493,11 +467,8 @@ current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
 
-for scheme in db_data["schemes"].values():
-    scheme["lots"] = [lot for lot in scheme["lots"] if str(lot.get("ticker", "")).strip().upper() not in ["", "NAN", "NONE"]]
-
 # ==========================================
-# 📊 左側邊欄：總經面板 (極簡去噪版)
+# 📊 左側邊欄：總經面板
 # ==========================================
 st.sidebar.title("🏦 Quant Terminal")
 st.sidebar.markdown(f"📈 **宏觀匯率 USD/TWD：** `{current_rate:.2f}`")
@@ -541,6 +512,8 @@ app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
     "🇺🇸 美股主力量化倉位", 
     "💸 現金流與稅務水庫", 
     "🧪 戰略回測實驗室", 
+    "🧬 機構級阿爾法模型 (Alpha Quants)",
+    "🤖 24H 守望者腳本 (Cron Bot)",
     "🔍 全球宏觀市場終端", 
     "📖 系統操作指南 (User Manual)",
     "⚙️ 系統全域設定 (Settings)"
@@ -548,7 +521,7 @@ app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
 st.sidebar.markdown("---")
 
 # ==========================================
-# ⚙️ 新增：系統全域設定 (Settings)
+# ⚙️ 系統全域設定 (Settings)
 # ==========================================
 if app_mode == "⚙️ 系統全域設定 (Settings)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #334155 0%, #0f172a 100%); border-left-color: #94a3b8;'>⚙️ 系統全域參數與資料庫管裡 (Settings & Backup)</div>", unsafe_allow_html=True)
@@ -602,7 +575,7 @@ if app_mode == "⚙️ 系統全域設定 (Settings)":
 elif app_mode == "📖 系統操作指南 (User Manual)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left-color: #64748b;'>📖 量化終端實戰操作指南 (Quant Playbook)</div>", unsafe_allow_html=True)
     
-    st.info("這份手冊將教您如何將這個系統從『單純的記帳軟體』晉升為『為您賺錢的量化大腦』。請按照以下 4 個階段熟悉您的戰鬥中心。")
+    st.info("這份手冊將教您如何將這個系統從『單純的記帳軟體』晉升為『為您賺錢的量化大腦』。請按照以下階段熟悉您的戰鬥中心。")
     
     with st.expander("📍 第一階段：新手起步 (如何建立與管理庫存)", expanded=True):
         st.markdown("""
@@ -623,47 +596,262 @@ elif app_mode == "📖 系統操作指南 (User Manual)":
         ### 1. 看懂總經大盤的「三大紅綠燈」
         在畫面最左邊側邊欄，有三個決定您能否開槓桿的指標：
         * **🏛 利差 (10Y-3M)**：若亮紅燈代表債券倒掛（衰退前兆），嚴禁重壓。
-        * **📉 VIX 恐慌指數**：衡量市場恐慌度。若數值大於 25，系統的演算法會強迫將您持有的槓桿部位（如 TQQQ, 00631L）的建議權重**強制砍半**。
-        * **🕸️ 市場寬度 (S&P500)**：判斷現在是「真牛市」還是「拉抬權值股的假牛市」。若破線，系統會拒絕加碼槓桿。
+        * **📉 VIX 恐慌指數**：衡量市場恐慌度。若數值大於 25，系統的演算法會強迫將您持有的槓桿部位的建議權重**強制砍半**。
+        * **🕸️ 市場寬度 (S&P500)**：若破線，系統會拒絕加碼槓桿。
 
         ### 2. 認識個股面板的「戰鬥指示燈」
-        在 `📊 🛡️ 機構級量化風控與盯盤中心` 每個個股的最右側卡片，系統會比對您的「目標權重」與「實際市值」，給出以下精確指令：
+        在 `📊 🛡️ 機構級量化風控與盯盤中心` 每個個股的卡片，系統會比對您的「目標權重」與「實際市值」，給出精確指令：
         * <span class='badge-buy'>🟢 BUY TO OPEN</span>：比例不足，且均線多頭，建議立刻買進補齊。
         * <span class='badge-sell'>🔴 SELL TO CLOSE</span>：比例過高，建議賣出部分停利。
-        * <span class='badge-hold'>🟡 MA BEARISH 暫緩</span>：雖然您的比例不足，但目前該股處於「均線死亡交叉（空頭）」，系統為保護您，**強制鎖定買進建議**，避免左側接刀。
+        * <span class='badge-hold'>🟡 MA BEARISH 暫緩</span>：比例不足，但該股處於「均線死亡交叉」，系統為保護您，**強制鎖定買進建議**。
         * <span class='badge-sell' style='background:#b91c1c; color:white;'>🚨 SELL ALL 觸發清倉</span>：股價跌破了「ATR 吊燈停利線」，請**無條件全數平倉**保住利潤！
         """, unsafe_allow_html=True)
 
-    with st.expander("📍 第三階段：資金控管 (如何加碼與停損)"):
+    with st.expander("📍 第三階段：資金控管與進階模型 (加碼、停損、最佳化)"):
         st.markdown("""
-        ### 1. 使用「ATR 吊燈移動停利 (Chandelier Exit)」
-        * 這套系統最核心的防守機制！在監控盤上方有一個拉桿 **「📉 ATR 吊燈停利乘數」**。
-        * **原理**：系統會自動記住您建倉以來的「最高價」，並向下減去 N 倍的「真實波動均值 (ATR)」。
-        * **好處**：0050 的波動小，停損線就會設得很近；TQQQ 的波動大，停損線會自動拉寬。一旦 K 線實體跌破這條紅色的虛線，代表趨勢徹底反轉，請絕對遵守紀律執行清倉。
-
-        ### 2. 智慧增量資金注水 (Pyramiding)
+        ### 1. 智慧增量資金注水 (Pyramiding)
         每個月發薪水想定期定額？請到 **`💰 智慧階梯式增量資金注水控制台`** 分頁。
-        輸入您這個月要投入的現金（如 30,000），並選擇策略：
-        * **⚖️ 標準配置**：哪一檔低於目標比例，就補哪一檔。
+        輸入您這個月要投入的現金，並選擇策略：
         * **📈 右側順勢加碼**：把錢全部集中打在「目前均線呈現多頭排列」的強勢股上，讓獲利奔跑。
         * **📉 左側分批抄底**：只把錢拿去買 RSI < 40 的超跌委屈股。
+
+        ### 2. 🧬 機構級阿爾法模型 (Alpha Quants)
+        * **馬可維茲效率前緣 (MVO)**：讓電腦跑 5000 次隨機試算，告訴您最完美的持股比例是多少，以達到最高夏普值。
+        * **歷史 VaR 壓力測試**：模擬如果遇到像 2020 疫情崩盤那樣的 5% 黑天鵝機率，您的帳戶一天會蒸發多少錢。
         """)
 
-    with st.expander("📍 第四階段：進階優化 (AI 覆盤與現金流收租)"):
-        st.markdown("""
-        ### 1. 讓 AI 當您的毒舌交易教練
-        在交易日誌分頁的下方，點擊 **[✨ 讓 Gemini 檢討我的交易決策]**。
-        AI 會讀取您每一筆交易的「備註」，算出您的勝率與「非理性交易佔比」，無情地戳破您的情緒化操作盲點！
-
-        ### 2. 領取股息與二代健保避雷
-        當您投資的 ETF 配息時：
-        * 請到交易日誌選 <span class='manual-highlight'>💸 領取股息 (DIVIDEND)</span> 寫入總金額。
-        * 到左側選單進入 **`💸 現金流與稅務水庫`**。系統會幫您算出每檔股票真實的「持倉成本殖利率 (YoC)」。
-        * **稅務預警**：系統若算出您某檔台股單次配息將超過 **20,000 元台幣**，會立刻亮起紅燈，警告您將被扣取 2.11% 的二代健保補充保費，建議您提早規劃！
+# ==========================================
+# 🧬 新增模組 1: 機構級阿爾法模型 (Alpha Quants)
+# ==========================================
+elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-left-color: #8b5cf6;'>🧬 機構級阿爾法實驗室 (MVO & VaR & RS)</div>", unsafe_allow_html=True)
+    st.info("💡 **模組說明**：本區包含華爾街法人的核心計量模型，包含馬可維茲最佳化權重、相對強弱矩陣與極端壓力測試。運算需要較長時間，請耐心等候。")
+    
+    target_scheme = st.selectbox("請選擇要分析的資產池：", ["🎯 台股主力配置", "🎯 美股主力配置"])
+    raw_lots = db_data["schemes"][target_scheme].get("lots", [])
+    raw_targets = db_data["schemes"][target_scheme].get("targets", {})
+    agg_assets, _ = aggregate_lots(raw_lots, raw_targets)
+    
+    valid_tickers = [a["ticker"] for a in agg_assets if a["ticker"] != "CASH" and a["init_shares"] > 0]
+    
+    if not valid_tickers:
+        st.warning("⚠️ 該資產池目前沒有足夠的有效持倉進行運算。")
+    else:
+        benchmark_tk = "^TWII" if "台股" in target_scheme else "^GSPC"
+        fetch_tickers = valid_tickers + [benchmark_tk]
         
-        ### 3. 戰略實驗室回測
-        想知道 0050 用 50MA 還是 60MA 比較準？進入 **`🧪 戰略回測實驗室`**，輸入代碼並拖拉參數，系統會瞬間跑完過去 10 年的歷史數據，畫出對比圖表，用數學證明您的策略能否打敗大盤死抱策略。
-        """, unsafe_allow_html=True)
+        with st.spinner("🧠 正在啟動蒙地卡羅引擎與下載 1 年期歷史回報矩陣..."):
+            try:
+                df_all = yf.download(fetch_tickers, period="1y", interval="1d", progress=False, session=yf_session)['Close']
+                if isinstance(df_all, pd.Series): df_all = df_all.to_frame()
+                df_all.dropna(inplace=True)
+            except Exception as e:
+                st.error("資料下載失敗，請稍後再試。")
+                df_all = pd.DataFrame()
+                
+        if not df_all.empty:
+            tab_rs, tab_mvo, tab_var = st.tabs(["⚔️ 曼斯菲爾德相對強弱 (RS)", "🧠 馬可維茲效率前緣 (MVO)", "🌪️ VaR 黑天鵝壓力測試"])
+            
+            # 1. 相對強弱 RS
+            with tab_rs:
+                st.markdown("### ⚔️ 個股 vs 大盤相對強弱矩陣 (Mansfield RS)")
+                st.markdown("衡量您的持股在過去一段時間內，是跑贏大盤的「領頭羊」，還是拖累績效的「平庸資產」。")
+                rs_period = st.radio("選擇 RS 比較週期：", ["近半年 (120天)", "近一年 (252天)"], horizontal=True)
+                days = 120 if "半年" in rs_period else 252
+                
+                if len(df_all) < 20: st.warning("歷史數據天數不足。")
+                else:
+                    calc_days = min(days, len(df_all) - 1)
+                    bm_ret = (df_all[benchmark_tk].iloc[-1] / df_all[benchmark_tk].iloc[-calc_days]) - 1
+                    
+                    rs_data = []
+                    for tk in valid_tickers:
+                        if tk in df_all.columns:
+                            tk_ret = (df_all[tk].iloc[-1] / df_all[tk].iloc[-calc_days]) - 1
+                            rs_score = ((1 + tk_ret) / (1 + bm_ret) - 1) * 100
+                            
+                            _, zh_name = smart_resolve_ticker(tk, MY_API_KEY)
+                            rs_data.append({"代碼": tk.split('.')[0], "名稱": zh_name, f"期間報酬率 ({calc_days}天)": tk_ret*100, "RS 領先大盤指數": rs_score})
+                    
+                    if rs_data:
+                        df_rs = pd.DataFrame(rs_data).sort_values(by="RS 領先大盤指數", ascending=False)
+                        st.dataframe(df_rs.style.background_gradient(subset=['RS 領先大盤指數'], cmap='RdYlGn'), use_container_width=True)
+                        st.info("💡 **解讀**：RS 指數大於 0 代表該資產跑贏大盤。資金注水時，應優先考慮加碼 RS 排名靠前的強勢股，淘汰 RS 嚴重為負的弱勢股。")
+
+            # 2. 馬可維茲 MVO
+            with tab_mvo:
+                st.markdown("### 🧠 馬可維茲效率前緣最佳化 (Markowitz Efficient Frontier)")
+                st.markdown("透過 5,000 次蒙地卡羅隨機亂數模擬，找出在當前持倉組合中，能達到「最高夏普值（風險報酬比最高）」的黃金配置權重。")
+                
+                if len(valid_tickers) < 2:
+                    st.warning("⚠️ MVO 最佳化至少需要 2 檔以上的資產才能產生多樣化權重配置。")
+                else:
+                    if st.button("🚀 啟動 5000 次蒙地卡羅模擬演算", type="primary"):
+                        with st.spinner("正在進行矩陣運算與最佳化求解..."):
+                            df_assets = df_all[valid_tickers]
+                            returns = df_assets.pct_change().dropna()
+                            mean_returns = returns.mean() * 252
+                            cov_matrix = returns.cov() * 252
+                            
+                            num_portfolios = 5000
+                            results = np.zeros((3, num_portfolios))
+                            weights_record = []
+                            
+                            for i in range(num_portfolios):
+                                weights = np.random.random(len(valid_tickers))
+                                weights /= np.sum(weights)
+                                weights_record.append(weights)
+                                
+                                p_return = np.sum(weights * mean_returns)
+                                p_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+                                results[0,i] = p_return
+                                results[1,i] = p_std
+                                results[2,i] = p_return / p_std # Sharpe Ratio (Risk-free = 0)
+                                
+                            max_sharpe_idx = np.argmax(results[2])
+                            optimal_weights = weights_record[max_sharpe_idx]
+                            
+                            fig_mvo = px.scatter(
+                                x=results[1]*100, y=results[0]*100, color=results[2],
+                                labels={'x': '預期年化波動率 (Risk %)', 'y': '預期年化報酬率 (Return %)', 'color': '夏普值 (Sharpe)'},
+                                title="5000 次模擬效率前緣分佈", template="plotly_white", color_continuous_scale="Viridis"
+                            )
+                            fig_mvo.add_trace(go.Scatter(x=[results[1, max_sharpe_idx]*100], y=[results[0, max_sharpe_idx]*100], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='最高夏普黃金點'))
+                            st.plotly_chart(fig_mvo, use_container_width=True)
+                            
+                            st.markdown("#### 🏆 演算法建議最佳黃金權重 (Optimal Target %)")
+                            opt_data = []
+                            for idx, tk in enumerate(valid_tickers):
+                                clean_tk = tk.split('.')[0]
+                                current_tgt = raw_targets.get(clean_tk, 0.0)
+                                opt_data.append({
+                                    "代碼": clean_tk, 
+                                    "目前您設定的 Target (%)": float(current_tgt),
+                                    "AI 最佳化建議 Target (%)": round(optimal_weights[idx] * 100, 1)
+                                })
+                            st.dataframe(pd.DataFrame(opt_data), use_container_width=True)
+                            st.info("💡 建議：若您目前的權重與 AI 建議差異過大，代表您的主觀配置可能承受了不必要的多餘波動風險。")
+
+            # 3. VaR 壓力測試
+            with tab_var:
+                st.markdown("### 🌪️ 歷史 VaR (Value at Risk) 黑天鵝壓力測試")
+                st.markdown("假設明日發生極端股災，基於過去一年的真實波動率，您的帳戶在 95% 或 99% 的信心水準下，一天內最大可能蒸發多少市值？")
+                
+                # 計算當前市值權重
+                current_vals = []
+                for tk in valid_tickers:
+                    # 取最新價
+                    cur_p = df_all[tk].iloc[-1]
+                    shares = next((a["init_shares"] for a in agg_assets if a["ticker"] == tk), 0)
+                    current_vals.append(cur_p * shares)
+                
+                total_eq_val = sum(current_vals)
+                if total_eq_val == 0:
+                    st.warning("股票資產淨值為 0，無須壓力測試。")
+                else:
+                    cur_weights = np.array(current_vals) / total_eq_val
+                    
+                    df_assets = df_all[valid_tickers]
+                    returns = df_assets.pct_change().dropna()
+                    
+                    # 計算投資組合每日歷史報酬率
+                    port_returns = returns.dot(cur_weights)
+                    
+                    var_95_pct = np.percentile(port_returns, 5) * 100
+                    var_99_pct = np.percentile(port_returns, 1) * 100
+                    
+                    st.markdown(f"<div style='background:#fef2f2; padding:20px; border-radius:10px; border:1px solid #fecaca; margin-bottom:20px;'><h4 style='color:#b91c1c; margin-top:0;'>📉 壓力測試兵推結果 (測試部位等值：NTD {fmt_money(total_eq_val)})</h4><ul style='font-size:1.1rem; color:#0f172a; margin-bottom:0;'><li><b>95% 信心水準 (20個交易日發生1次)</b>：單日最差預估跌幅 <b>{var_95_pct:.2f}%</b>，帳戶預估蒸發 <b>NTD {fmt_money(abs(var_95_pct/100 * total_eq_val))}</b></li><li style='margin-top:10px;'><b>99% 信心水準 (黑天鵝/股災等級)</b>：單日最差預估跌幅 <b>{var_99_pct:.2f}%</b>，帳戶預估蒸發 <b style='color:#ef4444;'>NTD {fmt_money(abs(var_99_pct/100 * total_eq_val))}</b></li></ul></div>", unsafe_allow_html=True)
+                    st.info("💡 思考：如果您在黑天鵝發生時，無法承受上述 99% 的單日蒸發金額而會產生恐慌拋售，請立刻調降您的高波動 ETF 權重，或增加保留現金 (CASH)。")
+
+# ==========================================
+# 🤖 新增模組 2: 24H 守望者腳本 (Cron Bot)
+# ==========================================
+elif app_mode == "🤖 24H 守望者腳本 (Cron Bot)":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); border-left-color: #34d399;'>🤖 24H 無頭守望者腳本產生器 (Cron Bot)</div>", unsafe_allow_html=True)
+    st.info("💡 **模組說明**：因為網頁休眠時無法即時發出警報，本模組將為您產生一支**獨立的 Python 腳本**。您可以將它部署在免費的 GitHub Actions，每天盤後自動幫您巡邏 ATR 停損與 VIX 狀況，並透過 LINE 傳送報告。")
+
+    st.markdown("### 📝 第一步：下載您的專屬守望者機器人")
+    
+    bot_code = f"""
+import yfinance as yf
+import pandas as pd
+import requests
+
+# 您的設定
+LINE_TOKEN = "{db_data.get('settings', {}).get('line_token', '請填入您的LINE_TOKEN')}"
+TICKERS = {[a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 美股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH'] + [a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 台股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH']}
+
+def send_line(msg):
+    if not LINE_TOKEN or LINE_TOKEN == "請填入您的LINE_TOKEN": return
+    requests.post('https://notify-api.line.me/api/notify', headers={{'Authorization': f'Bearer {{LINE_TOKEN}}'}}, data={{'message': msg}})
+
+def run_check():
+    alerts = []
+    # 檢查 VIX
+    try:
+        vix = yf.Ticker("^VIX").fast_info['lastPrice']
+        if vix > 25: alerts.append(f"⚠️ 大盤 VIX 飆高至 {{vix:.2f}}，系統建議啟動槓桿降載防禦。")
+    except: pass
+
+    # 檢查個股 ATR 停損
+    for tk in TICKERS:
+        try:
+            df = yf.download(tk, period="1y", progress=False)
+            if df.empty: continue
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            df['H-L'] = df['High'] - df['Low']
+            df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+            df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+            df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+            df['ATR'] = df['TR'].rolling(14).mean()
+            
+            cur_p = float(df['Close'].iloc[-1])
+            max_p = float(df['High'].tail(60).max()) # 簡化版：抓近一季高點當建倉最高價估算
+            atr_v = float(df['ATR'].iloc[-1])
+            stop_p = max_p - (2.5 * atr_v)
+            
+            if cur_p < stop_p:
+                alerts.append(f"🚨 {{tk}} 跌破 ATR 吊燈停損線 ({{stop_p:.2f}})！目前股價: {{cur_p:.2f}}。請考慮清倉。")
+        except: pass
+        
+    if alerts:
+        send_line("\\n".join(["[🤖 Quant 每日巡邏報告]"] + alerts))
+    else:
+        send_line("[🤖 Quant 每日巡邏報告]\\n✅ 全數資產皆在 ATR 安全線上，無異常。")
+
+if __name__ == "__main__":
+    run_check()
+"""
+    st.code(bot_code, language="python")
+    st.download_button("⬇️ 下載 cron_bot.py", file_name="cron_bot.py", mime="text/x-python", data=bot_code)
+    
+    st.markdown("""
+    ### ⚙️ 第二步：如何讓它每天免費自動執行？(使用 GitHub Actions)
+    1. 在 GitHub 建立一個私有 (Private) 儲存庫。
+    2. 將剛才下載的 `cron_bot.py` 以及一份 `requirements.txt` (裡面寫 `yfinance\\npandas\\nrequests`) 放進儲存庫。
+    3. 在儲存庫裡建立資料夾與檔案：`.github/workflows/main.yml`。
+    4. 將以下代碼貼入 `main.yml` 並存檔：
+    ```yaml
+    name: Daily Quant Bot Check
+    on:
+      schedule:
+        - cron: '30 6 * * *' # 每天早上 6:30 (UTC) 執行，對應台灣下午 2:30 盤後
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v2
+          - name: Set up Python
+            uses: actions/setup-python@v2
+            with:
+              python-version: '3.10'
+          - name: Install dependencies
+            run: pip install -r requirements.txt
+          - name: Run Bot
+            run: python cron_bot.py
+    ```
+    5. 完成！GitHub 會在每天台灣時間下午 2:30 (台股收盤後) 免費啟動虛擬主機，幫您檢查所有股票是否跌破 ATR 並發送 LINE 報告給您。
+    """)
 
 # ==========================================
 # 🏠 1. 宏觀資產矩陣 (Dashboard)
@@ -679,7 +867,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
         <span style='color:#475569 !important;'>大盤寬度: <span style='color:{breadth_color}; font-weight:900;'>{'安全多頭' if market_breadth_bullish else '破線空頭'}</span></span>
     </div>
     """, unsafe_allow_html=True)
-
+    
     total_aum_ntd, tw_aum_ntd, us_aum_ntd = 0, 0, 0
     total_cost_ntd = 0
     total_div_ntd, global_realized_pnl = 0, 0
@@ -756,7 +944,6 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     req_cagr = ((target_amount / total_aum_ntd) ** (1 / max(1, target_years)) - 1) * 100 if total_aum_ntd > 0 and target_amount > total_aum_ntd else 0.0
     cumulative_ret = (((total_aum_ntd + global_realized_pnl + total_div_ntd) / total_cost_ntd) - 1) * 100 if total_cost_ntd > 0 else 0.0
 
-    st.markdown("### 🎯 總體戰略績效矩陣")
     g1, g2, g3, g4 = st.columns(4)
     g1.markdown(f"<div class='kpi-card' style='border-top: 5px solid #8b5cf6;'><div class='data-label'>設定目標資產 (Target AUM)</div><div class='ticker-display'>NTD {fmt_money(target_amount)}</div></div>", unsafe_allow_html=True)
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
@@ -766,7 +953,6 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    st.markdown("### 📊 全球板塊資金分佈與歷史戰績")
     d_col1, d_col2 = st.columns([1, 1.2])
     with d_col1:
         if pie_data:
@@ -1055,7 +1241,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             if tech_ratio > 70:
                 st.warning(f"⚠️ **Beta 集中度警報**：您的持倉中科技與半導體資產（如 2330, QQQ 等）的權重已高達 **{tech_ratio:.1f}%**。一旦板塊震盪將承受集體重挫風險，請謹慎增建槓桿部位！")
             
-            # 💡 核心優化：將佔用空間的參數收納進折疊面板
             with st.expander("⚙️ 演算法動態參數微調 (Algorithm Settings)"):
                 c_slider1, c_slider2 = st.columns(2)
                 rebalance_threshold = c_slider1.slider("⚖️ 演算法模型配置容錯閾值 (%)", 0.0, 10.0, 2.0, 0.5)
@@ -1120,11 +1305,10 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
 
             st.markdown("<hr>", unsafe_allow_html=True)
 
-            # 💡 核心優化：卡片排版極簡化
             for item in current_view_data:
                 if item.get("init_shares") <= 0.001 and item.get("target_pct") <= 0: continue
 
-                c = st.columns([1.8, 1.8, 1.4, 1.6, 2.4]) # 減少一欄，將次要資訊合併，提升空間利用率
+                c = st.columns([1.8, 1.8, 1.4, 1.6, 2.4])
                 
                 now_v = item.get("now_val_ntd", 0)
                 lev = item.get("leverage", 1.0)
@@ -1366,7 +1550,7 @@ elif app_mode == "💸 現金流與稅務水庫":
     st.info(f"📈 依據複利齒輪模型，將今年配息全數進行 **DRIP (股息再買回現貨)**，在指數年化 8% 報酬率下，10 年後這筆無本利息將滾大為 **NTD {fmt_money(future_value)}**！")
 
 # ==========================================
-# 🧪 新增分頁 5: 戰略回測實驗室 (Backtesting Lab)
+# 🧪 新增分頁 4: 戰略回測實驗室 (Backtesting Lab)
 # ==========================================
 elif app_mode == "🧪 戰略回測實驗室":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #4338ca 0%, #0f172a 100%); border-left-color: #34d399;'>🧪 歷史量化回測與策略沙盒 (Backtesting Sandbox)</div>", unsafe_allow_html=True)
@@ -1435,7 +1619,6 @@ elif app_mode == "🧪 戰略回測實驗室":
 elif app_mode == "🔍 全球宏觀市場終端":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); margin-bottom: 24px;'>📊 全球宏觀市場終端 (Global Macro Terminal)</div>", unsafe_allow_html=True)
     
-    # 💡 核心優化：將大盤選擇器從側邊欄移至主畫面，避免 UI 彈跳
     c_m1, c_m2 = st.columns([1, 2])
     market_choice = c_m1.radio("🌍 快速切換分析標的：", ["台灣加權指數 (台股)", "那斯達克 (美股科技)", "標普 500 (美股大盤)", "費城半導體", "自訂輸入個股"], horizontal=True)
     k_period = c_m2.radio("選擇量化回測週期 (Timeframe)：", ["日K", "週K", "月K", "年K"], horizontal=True)
