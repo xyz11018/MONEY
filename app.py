@@ -675,7 +675,18 @@ elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
                     
                     if rs_data:
                         df_rs = pd.DataFrame(rs_data).sort_values(by="RS 領先大盤指數", ascending=False)
-                        st.dataframe(df_rs.style.background_gradient(subset=['RS 領先大盤指數'], cmap='RdYlGn'), use_container_width=True)
+                        
+                        # 💡 核心修復：拔除 matplotlib 依賴，改用輕量化原生字體變色
+                        def color_rs(val):
+                            color = '#10b981' if val > 0 else '#ef4444'
+                            return f'color: {color}; font-weight: 800;'
+                            
+                        try:
+                            styled_df = df_rs.style.map(color_rs, subset=['RS 領先大盤指數'])
+                        except:
+                            styled_df = df_rs.style.applymap(color_rs, subset=['RS 領先大盤指數'])
+                            
+                        st.dataframe(styled_df, use_container_width=True)
                         st.info("💡 **解讀**：RS 指數大於 0 代表該資產跑贏大盤。資金注水時，應優先考慮加碼 RS 排名靠前的強勢股，淘汰 RS 嚴重為負的弱勢股。")
 
             # 2. 馬可維茲 MVO
@@ -740,7 +751,6 @@ elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
                 # 計算當前市值權重
                 current_vals = []
                 for tk in valid_tickers:
-                    # 取最新價
                     cur_p = df_all[tk].iloc[-1]
                     shares = next((a["init_shares"] for a in agg_assets if a["ticker"] == tk), 0)
                     current_vals.append(cur_p * shares)
@@ -1161,7 +1171,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
         if lots_df.empty: lots_df = pd.DataFrame(columns=["動作", "代碼", "數量", "價格/總息", "日期", "決策備註"])
         edited_lots = st.data_editor(lots_df, num_rows="dynamic", use_container_width=True, key=f"editor_{market_label}")
         
-        if st.button(f"📌 確認同步並寫入雲端資料庫", type="primary", key=f"save_btn_{market_label}"):
+        if st.button(f"📌 確認同步並寫入儲存庫", type="primary", key=f"save_btn_{market_label}"):
             with st.spinner('正在同步儲存庫...'):
                 new_lots = []
                 for _, row in edited_lots.iterrows():
@@ -1239,7 +1249,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             """, unsafe_allow_html=True)
             
             if tech_ratio > 70:
-                st.warning(f"⚠️ **Beta 集中度警報**：您的持倉中科技與半導體資產（如 2330, QQQ 等）的權重已高達 **{tech_ratio:.1f}%**。一旦板塊震盪將承受集體重挫風險，請謹慎增建槓桿部位！")
+                st.warning(f"⚠️ **Beta 集中度警報**：您的持倉中科技與半導體資產（如 2330, 0052, QQQ 等）的權重已高達 **{tech_ratio:.1f}%**。一旦板塊震盪將承受集體重挫風險，請謹慎增建槓桿部位！")
             
             with st.expander("⚙️ 演算法動態參數微調 (Algorithm Settings)"):
                 c_slider1, c_slider2 = st.columns(2)
