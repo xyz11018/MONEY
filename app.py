@@ -135,7 +135,7 @@ try:
             
         USE_FIREBASE = True
 except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」。錯誤: {e}")
+    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」保命。錯誤: {e}")
     USE_FIREBASE = False
 
 def load_portfolio():
@@ -162,6 +162,7 @@ def load_portfolio():
 
     if not data: data = default_data
 
+    # 🛡️ 資料庫防呆自動補齊機制
     if "global_goals" not in data: data["global_goals"] = default_data["global_goals"]
     if "settings" not in data: data["settings"] = default_data["settings"]
     if "schemes" not in data: 
@@ -823,6 +824,9 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             local_total_profit = local_total_val - local_total_cost
             total_leverage_ratio = local_total_exposure / local_total_val if local_total_val > 0 else 0.0
             
+            # 💡 核心修復：補回缺失的 tech_ratio 計算，消滅 NameError
+            tech_ratio = (tech_exposure_val / local_total_val * 100) if local_total_val > 0 else 0
+            
             pnl_color = "#10b981" if local_total_profit >= 0 else "#ef4444"
             pnl_sign = "+" if local_total_profit >= 0 else ""
             
@@ -940,7 +944,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             for item in current_view_data:
                 if item.get("init_shares") <= 0.001 and item.get("target_pct") <= 0: continue
                 
-                # 💡 核心修復：宣告 mult 變數
                 mult = 1.0 if is_tw_mode else current_rate
 
                 c = st.columns([1.8, 1.8, 1.4, 1.6, 2.4])
@@ -1214,6 +1217,64 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
+# 💸 3. 現金流與稅務水庫
+# ==========================================
+elif app_mode == "💸 現金流與稅務水庫":
+    st.markdown("<div class='market-header global-market'>💸 被動現金流水庫與二代健保避稅預警 (Cashflow Terminal)</div>", unsafe_allow_html=True)
+    
+    all_div_records = []
+    total_expected_div = 0
+    total_tax_warning = []
+    
+    for scheme_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
+        is_tw = "台股" in scheme_name
+        raw_lots = db_data["schemes"][scheme_name].get("lots", [])
+        raw_targets = db_data["schemes"][scheme_name].get("targets", {})
+        agg_assets, perf_metrics = aggregate_lots(raw_lots, raw_targets)
+        
+        for asset in agg_assets:
+            if asset['ticker'] == 'CASH' or asset['init_shares'] <= 0: continue
+            try:
+                info = yf.Ticker(asset['ticker'], session=yf_session).info
+                yield_val = float(info.get('dividendYield', 0) or 0)
+                price = float(info.get('currentPrice', info.get('previousClose', 0)) or 0)
+            except: yield_val, price = 0.0, 0.0
+            
+            if yield_val > 0 and price > 0:
+                mult = 1.0 if is_tw else current_rate
+                val_ntd = asset['init_shares'] * price * mult
+                expected_annual_div = val_ntd * yield_val
+                total_expected_div += expected_annual_div
+                
+                if is_tw:
+                    freq = 4 if '00' in asset['ticker'] else 1
+                    est_single_div = expected_annual_div / freq
+                    if est_single_div > 20000:
+                        total_tax_warning.append(f"⚠️ <b>{asset['ticker'].split('.')[0]}</b>：預估單次配息達 <b>NTD {fmt_money(est_single_div)}</b>，將扣 <b>2.11% 二代健保 (損失 NTD {fmt_money(est_single_div * 0.0211)})</b>。")
+
+                all_div_records.append({
+                    "資產代碼": asset['ticker'].split('.')[0], "庫存市值 (NTD)": val_ntd,
+                    "當前股息殖利率": yield_val * 100, "持倉均價成本殖利率 YoC": asset.get('yoc', 0),
+                    "預期年化股利被動收入 (NTD)": expected_annual_div
+                })
+    
+    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
+    col_kpi1.metric("預測未來 12 個月總配息", f"NTD {fmt_money(total_expected_div)}")
+    monthly_cashflow = total_expected_div / 12
+    col_kpi2.metric("預測平均月被動收入", f"NTD {fmt_money(monthly_cashflow)}")
+    col_kpi3.metric("被動收入可覆蓋基本開銷率", f"{(monthly_cashflow / 50000)*100:.1f}%", "以開銷 5 萬計")
+    
+    st.markdown("---")
+    st.subheader("📆 被動收益分配現況表")
+    if all_div_records:
+        df_div = pd.DataFrame(all_div_records)
+        st.dataframe(df_div.style.format({"庫存市值 (NTD)": "{:,.0f}", "當前股息殖利率": "{:.2f}%", "持倉均價成本殖利率 YoC": "{:.2f}%", "預期年化股利被動收入 (NTD)": "{:,.0f}"}), use_container_width=True)
+    else: st.info("目前持倉中無高配息資產標的。")
+        
+    if total_tax_warning:
+        st.markdown(f"<div class='action-box' style='background-color:#fffbeb; border-color:#b45309;'><h4 style='color:#b45309 !important;'>🚨 二代健保補充保費漏洞預警</h4><div style='font-size:1rem; line-height:1.6; color:#0f172a;'>{('<br>'.join(total_tax_warning))}</div></div>", unsafe_allow_html=True)
+
+# ==========================================
 # 🧬 機構級阿爾法模型 (Alpha Quants)
 # ==========================================
 elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
@@ -1340,7 +1401,7 @@ elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
                     st.markdown(f"<div style='background:#fef2f2; padding:20px; border-radius:10px; border:1px solid #fecaca; margin-bottom:20px;'><h4 style='color:#b91c1c; margin-top:0;'>📉 壓力測試兵推結果 (測試部位：NTD {fmt_money(total_eq_val)})</h4><ul style='font-size:1.1rem; color:#0f172a; margin-bottom:0;'><li><b>95% 信心水準 (20日發生1次)</b>：單日最差跌幅 <b>{var_95_pct:.2f}%</b>，約蒸發 <b>NTD {fmt_money(abs(var_95_pct/100 * total_eq_val))}</b></li><li style='margin-top:10px;'><b>99% 信心水準 (黑天鵝股災)</b>：單日最差跌幅 <b>{var_99_pct:.2f}%</b>，約蒸發 <b style='color:#ef4444;'>NTD {fmt_money(abs(var_99_pct/100 * total_eq_val))}</b></li></ul></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🤖 新增模組 2: 24H 守望者腳本 (Cron Bot)
+# 🤖 24H 守望者腳本 (Cron Bot)
 # ==========================================
 elif app_mode == "🤖 24H 守望者腳本 (Cron Bot)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); border-left-color: #34d399;'>🤖 24H 無頭守望者腳本產生器 (Cron Bot)</div>", unsafe_allow_html=True)
@@ -1498,64 +1559,6 @@ elif app_mode == "🧪 戰略回測實驗室":
         else: st.error("無效的資產代碼。")
 
 # ==========================================
-# 💸 現金流與稅務水庫
-# ==========================================
-elif app_mode == "💸 現金流與稅務水庫":
-    st.markdown("<div class='market-header global-market'>💸 被動現金流水庫與二代健保避稅預警 (Cashflow Terminal)</div>", unsafe_allow_html=True)
-    
-    all_div_records = []
-    total_expected_div = 0
-    total_tax_warning = []
-    
-    for scheme_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
-        is_tw = "台股" in scheme_name
-        raw_lots = db_data["schemes"][scheme_name].get("lots", [])
-        raw_targets = db_data["schemes"][scheme_name].get("targets", {})
-        agg_assets, perf_metrics = aggregate_lots(raw_lots, raw_targets)
-        
-        for asset in agg_assets:
-            if asset['ticker'] == 'CASH' or asset['init_shares'] <= 0: continue
-            try:
-                info = yf.Ticker(asset['ticker'], session=yf_session).info
-                yield_val = float(info.get('dividendYield', 0) or 0)
-                price = float(info.get('currentPrice', info.get('previousClose', 0)) or 0)
-            except: yield_val, price = 0.0, 0.0
-            
-            if yield_val > 0 and price > 0:
-                mult = 1.0 if is_tw else current_rate
-                val_ntd = asset['init_shares'] * price * mult
-                expected_annual_div = val_ntd * yield_val
-                total_expected_div += expected_annual_div
-                
-                if is_tw:
-                    freq = 4 if '00' in asset['ticker'] else 1
-                    est_single_div = expected_annual_div / freq
-                    if est_single_div > 20000:
-                        total_tax_warning.append(f"⚠️ <b>{asset['ticker'].split('.')[0]}</b>：預估單次配息達 <b>NTD {fmt_money(est_single_div)}</b>，將扣 <b>2.11% 二代健保 (損失 NTD {fmt_money(est_single_div * 0.0211)})</b>。")
-
-                all_div_records.append({
-                    "資產代碼": asset['ticker'].split('.')[0], "庫存市值 (NTD)": val_ntd,
-                    "當前股息殖利率": yield_val * 100, "持倉均價成本殖利率 YoC": asset.get('yoc', 0),
-                    "預期年化股利被動收入 (NTD)": expected_annual_div
-                })
-    
-    col_kpi1, col_kpi2, col_kpi3 = st.columns(3)
-    col_kpi1.metric("預測未來 12 個月總配息", f"NTD {fmt_money(total_expected_div)}")
-    monthly_cashflow = total_expected_div / 12
-    col_kpi2.metric("預測平均月被動收入", f"NTD {fmt_money(monthly_cashflow)}")
-    col_kpi3.metric("被動收入可覆蓋基本開銷率", f"{(monthly_cashflow / 50000)*100:.1f}%", "以開銷 5 萬計")
-    
-    st.markdown("---")
-    st.subheader("📆 被動收益分配現況表")
-    if all_div_records:
-        df_div = pd.DataFrame(all_div_records)
-        st.dataframe(df_div.style.format({"庫存市值 (NTD)": "{:,.0f}", "當前股息殖利率": "{:.2f}%", "持倉均價成本殖利率 YoC": "{:.2f}%", "預期年化股利被動收入 (NTD)": "{:,.0f}"}), use_container_width=True)
-    else: st.info("目前持倉中無高配息資產標的。")
-        
-    if total_tax_warning:
-        st.markdown(f"<div class='action-box' style='background-color:#fffbeb; border-color:#b45309;'><h4 style='color:#b45309 !important;'>🚨 二代健保補充保費漏洞預警</h4><div style='font-size:1rem; line-height:1.6; color:#0f172a;'>{('<br>'.join(total_tax_warning))}</div></div>", unsafe_allow_html=True)
-
-# ==========================================
 # 🔍 6. 全球宏觀市場終端
 # ==========================================
 elif app_mode == "🔍 全球宏觀市場終端":
@@ -1639,7 +1642,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         fig.add_trace(go.Scatter(x=df.index, y=df['MA3'], mode='lines', name=n3, line=dict(color='#3b82f6', width=2)), row=1, col=1)
                         fig.add_trace(go.Bar(x=df.index, y=df['Volume'], name="市場成交量", marker_color="#cbd5e1"), row=2, col=1)
                         fig.update_layout(xaxis_rangeslider_visible=False, height=600, template="plotly_white", margin=dict(t=30, b=10, l=10, r=10), hovermode="x unified")
-                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False}, key=f"terminal_stock_chart_{clean_title}")
+                        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
                         tab1, tab2 = st.tabs(["📈 AI 神經網絡戰略分析", "📰 全球市場事件與情緒掃描"])
                         with tab1:
