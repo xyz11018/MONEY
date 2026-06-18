@@ -135,7 +135,7 @@ try:
             
         USE_FIREBASE = True
 except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」。錯誤: {e}")
+    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」保命。錯誤: {e}")
     USE_FIREBASE = False
 
 def load_portfolio():
@@ -241,7 +241,6 @@ def get_leverage(ticker):
 # 3. 📈 即時大數據與 ATR 動態防護同步引擎
 # ==========================================
 def fetch_market_data(ticker):
-    # 🛡️ 初始化所有默認變數，徹底根絕 NameError
     default_res = {
         "price": 1.0, "date": "即時報價", "ma50": 1.0, "ma200": 1.0, 
         "high_52w": 1.0, "drawdown": 0.0, "bias": 0.0, "rsi": 50.0, 
@@ -278,7 +277,6 @@ def fetch_market_data(ticker):
                 date_str = "即時市場報價" if realtime_price > 0 else closes.index[-1].strftime("%Y-%m-%d")
                 
                 recent_highs = highs.tail(252) if len(highs) > 252 else highs
-                # 安全計算 high_52w
                 high_52w = float(recent_highs.max()) if not pd.isna(recent_highs.max()) else price
                 high_52w = max(high_52w, price)
                 
@@ -519,6 +517,7 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("---")
 if MY_API_KEY: genai.configure(api_key=MY_API_KEY)
 
+# 💡 核心修復：確保導覽列有 10 個選項
 app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
     "🏠 宏觀資產矩陣 (Dashboard)", 
     "🇹🇼 台股主力量化倉位", 
@@ -685,7 +684,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
-    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總和回報率 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總回報 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -807,7 +806,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     ann_roi = (((1 + net_pnl_pct / 100) ** (365 / max(h_days, 1)) - 1) * 100) if h_days > 0 else net_pnl_pct
                     yoc = (asset.get("dividends", 0) * (1.0 if is_tw_mode else current_rate) / net_cost * 100) if net_cost > 0 else 0.0
                     
-                    # 🛡️ 徹底根絕 high_52w 的 NameError 風險
+                    # 安全調取 high_52w
                     high_52w_val = m_data.get("high_52w", now_p)
                     dist_52w = ((now_p - high_52w_val) / high_52w_val * 100) if high_52w_val > 0 else 0.0
                     
@@ -957,7 +956,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             for item in current_view_data:
                 if item.get("init_shares") <= 0.001 and item.get("target_pct") <= 0: continue
                 
-                # 💡 強制補回 mult 宣告，確保計算無阻
                 mult = 1.0 if is_tw_mode else current_rate
 
                 c = st.columns([1.8, 1.8, 1.4, 1.6, 2.4])
@@ -1289,7 +1287,7 @@ elif app_mode == "💸 現金流與稅務水庫":
         st.markdown(f"<div class='action-box' style='background-color:#fffbeb; border-color:#b45309;'><h4 style='color:#b45309 !important;'>🚨 二代健保補充保費漏洞預警</h4><div style='font-size:1rem; line-height:1.6; color:#0f172a;'>{('<br>'.join(total_tax_warning))}</div></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 🧪 新增分頁 4: 戰略回測實驗室 (Backtesting Lab)
+# 🧪 戰略回測實驗室 (Backtesting Lab)
 # ==========================================
 elif app_mode == "🧪 戰略回測實驗室":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #4338ca 0%, #0f172a 100%); border-left-color: #34d399;'>🧪 歷史量化回測與策略沙盒 (Backtesting Sandbox)</div>", unsafe_allow_html=True)
@@ -1362,7 +1360,244 @@ elif app_mode == "🧪 戰略回測實驗室":
         else: st.error("無效的資產代碼。")
 
 # ==========================================
-# 🔍 6. 全球宏觀市場終端
+# 🧬 機構級阿爾法模型 (Alpha Quants)
+# ==========================================
+elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); border-left-color: #8b5cf6;'>🧬 機構級阿爾法實驗室 (MVO & VaR & RS)</div>", unsafe_allow_html=True)
+    st.info("💡 **模組說明**：本區包含華爾街法人的核心計量模型，包含馬可維茲最佳化權重、相對強弱矩陣與極端壓力測試。運算需要較長時間，請耐心等候。")
+    
+    target_scheme = st.selectbox("請選擇要分析的資產池：", ["🎯 台股主力配置", "🎯 美股主力配置"])
+    raw_lots = db_data["schemes"][target_scheme].get("lots", [])
+    raw_targets = db_data["schemes"][target_scheme].get("targets", {})
+    agg_assets, _ = aggregate_lots(raw_lots, raw_targets)
+    
+    valid_tickers = [a["ticker"] for a in agg_assets if a["ticker"] != "CASH" and a["init_shares"] > 0]
+    
+    if not valid_tickers:
+        st.warning("⚠️ 該資產池目前沒有足夠的有效持倉進行運算。")
+    else:
+        benchmark_tk = "^TWII" if "台股" in target_scheme else "^GSPC"
+        fetch_tickers = valid_tickers + [benchmark_tk]
+        
+        with st.spinner("🧠 正在啟動蒙地卡羅引擎與下載 1 年期歷史回報矩陣..."):
+            try:
+                df_all = yf.download(fetch_tickers, period="1y", interval="1d", progress=False, session=yf_session)['Close']
+                if isinstance(df_all, pd.Series): df_all = df_all.to_frame()
+                df_all.dropna(inplace=True)
+            except Exception as e:
+                st.error("資料下載失敗，請稍後再試。")
+                df_all = pd.DataFrame()
+                
+        if not df_all.empty:
+            tab_rs, tab_mvo, tab_var = st.tabs(["⚔️ 曼斯菲爾德相對強弱 (RS)", "🧠 馬可維茲效率前緣 (MVO)", "🌪️ VaR 黑天鵝壓力測試"])
+            
+            # 1. 相對強弱 RS
+            with tab_rs:
+                st.markdown("### ⚔️ 個股 vs 大盤相對強弱矩陣 (Mansfield RS)")
+                st.markdown("衡量您的持股在過去一段時間內，是跑贏大盤的「領頭羊」，還是拖累績效的「平庸資產」。")
+                rs_period = st.radio("選擇 RS 比較週期：", ["近半年 (120天)", "近一年 (252天)"], horizontal=True)
+                days = 120 if "半年" in rs_period else 252
+                
+                if len(df_all) < 20: st.warning("歷史數據天數不足。")
+                else:
+                    calc_days = min(days, len(df_all) - 1)
+                    bm_ret = (df_all[benchmark_tk].iloc[-1] / df_all[benchmark_tk].iloc[-calc_days]) - 1
+                    
+                    rs_data = []
+                    for tk in valid_tickers:
+                        if tk in df_all.columns:
+                            tk_ret = (df_all[tk].iloc[-1] / df_all[tk].iloc[-calc_days]) - 1
+                            rs_score = ((1 + tk_ret) / (1 + bm_ret) - 1) * 100
+                            
+                            _, zh_name = smart_resolve_ticker(tk, MY_API_KEY)
+                            trend_emoji = "🔥 遠超大盤" if rs_score > 10 else ("🟢 強於大盤" if rs_score > 0 else ("🟡 略微落後" if rs_score > -10 else "🚨 嚴重落後"))
+                            rs_data.append({
+                                "代碼": f"{tk.split('.')[0]} {zh_name}", 
+                                f"期間報酬率 ({calc_days}天)": f"{tk_ret*100:.2f}%", 
+                                "RS 領先大盤指數": float(f"{rs_score:.2f}"),
+                                "強度判定": trend_emoji
+                            })
+                    
+                    if rs_data:
+                        df_rs = pd.DataFrame(rs_data).sort_values(by="RS 領先大盤指數", ascending=False)
+                        
+                        def color_rs(val):
+                            if isinstance(val, (int, float)):
+                                color = '#10b981' if val > 0 else '#ef4444'
+                                return f'color: {color}; font-weight: 800;'
+                            return ''
+                            
+                        try:
+                            styled_df = df_rs.style.map(color_rs, subset=['RS 領先大盤指數'])
+                        except:
+                            styled_df = df_rs.style.applymap(color_rs, subset=['RS 領先大盤指數'])
+                            
+                        st.dataframe(styled_df, use_container_width=True)
+                        st.info("💡 **解讀**：RS 指數大於 0 代表該資產跑贏大盤。資金注水時，應優先考慮加碼排名靠前的強勢股。")
+
+            # 2. 馬可維茲 MVO
+            with tab_mvo:
+                st.markdown("### 🧠 馬可維茲效率前緣最佳化 (Markowitz Efficient Frontier)")
+                
+                if len(valid_tickers) < 2:
+                    st.warning("⚠️ MVO 最佳化至少需要 2 檔以上的資產才能產生多樣化權重配置。")
+                else:
+                    if st.button("🚀 啟動 5000 次蒙地卡羅模擬演算", type="primary"):
+                        with st.spinner("正在進行矩陣運算與最佳化求解..."):
+                            df_assets = df_all[valid_tickers]
+                            returns = df_assets.pct_change().dropna()
+                            mean_returns = returns.mean() * 252
+                            cov_matrix = returns.cov() * 252
+                            
+                            num_portfolios = 5000
+                            results = np.zeros((3, num_portfolios))
+                            weights_record = []
+                            
+                            for i in range(num_portfolios):
+                                weights = np.random.random(len(valid_tickers))
+                                weights /= np.sum(weights)
+                                weights_record.append(weights)
+                                
+                                p_return = np.sum(weights * mean_returns)
+                                p_std = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+                                results[0,i] = p_return
+                                results[1,i] = p_std
+                                results[2,i] = p_return / p_std # Sharpe Ratio
+                                
+                            max_sharpe_idx = np.argmax(results[2])
+                            optimal_weights = weights_record[max_sharpe_idx]
+                            
+                            fig_mvo = px.scatter(
+                                x=results[1]*100, y=results[0]*100, color=results[2],
+                                labels={'x': '預期年化波動率 (Risk %)', 'y': '預期年化報酬率 (Return %)', 'color': '夏普值 (Sharpe)'},
+                                title="5000 次模擬效率前緣分佈", template="plotly_white", color_continuous_scale="Viridis"
+                            )
+                            fig_mvo.add_trace(go.Scatter(x=[results[1, max_sharpe_idx]*100], y=[results[0, max_sharpe_idx]*100], mode='markers', marker=dict(color='red', size=15, symbol='star'), name='最高夏普黃金點'))
+                            st.plotly_chart(fig_mvo, use_container_width=True)
+                            
+                            st.markdown("#### 🏆 演算法建議最佳黃金權重 (Optimal Target %)")
+                            opt_data = []
+                            for idx, tk in enumerate(valid_tickers):
+                                clean_tk = tk.split('.')[0]
+                                current_tgt = raw_targets.get(clean_tk, 0.0)
+                                opt_data.append({
+                                    "代碼": clean_tk, 
+                                    "目前 Target (%)": float(current_tgt),
+                                    "AI 建議 Target (%)": round(optimal_weights[idx] * 100, 1)
+                                })
+                            st.dataframe(pd.DataFrame(opt_data), use_container_width=True)
+
+            # 3. VaR 壓力測試
+            with tab_var:
+                st.markdown("### 🌪️ 歷史 VaR (Value at Risk) 黑天鵝壓力測試")
+                
+                current_vals = []
+                for tk in valid_tickers:
+                    cur_p = df_all[tk].iloc[-1]
+                    shares = next((a["init_shares"] for a in agg_assets if a["ticker"] == tk), 0)
+                    current_vals.append(cur_p * shares)
+                
+                total_eq_val = sum(current_vals)
+                if total_eq_val == 0:
+                    st.warning("股票資產淨值為 0，無須壓力測試。")
+                else:
+                    cur_weights = np.array(current_vals) / total_eq_val
+                    df_assets = df_all[valid_tickers]
+                    returns = df_assets.pct_change().dropna()
+                    port_returns = returns.dot(cur_weights)
+                    
+                    var_95_pct = np.percentile(port_returns, 5) * 100
+                    var_99_pct = np.percentile(port_returns, 1) * 100
+                    
+                    st.markdown(f"<div style='background:#fef2f2; padding:20px; border-radius:10px; border:1px solid #fecaca; margin-bottom:20px;'><h4 style='color:#b91c1c; margin-top:0;'>📉 壓力測試兵推結果 (股票部位：NTD {fmt_money(total_eq_val)})</h4><ul style='font-size:1.1rem; color:#0f172a; margin-bottom:0;'><li><b>95% 信心水準 (20日發生1次)</b>：單日最差跌幅 <b>{var_95_pct:.2f}%</b>，帳戶蒸發 <b>NTD {fmt_money(abs(var_95_pct/100 * total_eq_val))}</b></li><li style='margin-top:10px;'><b>99% 信心水準 (黑天鵝股災)</b>：單日最差跌幅 <b>{var_99_pct:.2f}%</b>，帳戶蒸發 <b style='color:#ef4444;'>NTD {fmt_money(abs(var_99_pct/100 * total_eq_val))}</b></li></ul></div>", unsafe_allow_html=True)
+
+# ==========================================
+# 🤖 24H 守望者腳本 (Cron Bot)
+# ==========================================
+elif app_mode == "🤖 24H 守望者腳本 (Cron Bot)":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); border-left-color: #34d399;'>🤖 24H 無頭守望者腳本產生器 (Cron Bot)</div>", unsafe_allow_html=True)
+    st.info("💡 **模組說明**：因為網頁休眠時無法即時發出警報，本模組將為您產生一支**獨立的 Python 腳本**。您可以將它部署在免費的 GitHub Actions，每天盤後自動幫您巡邏 ATR 停損與 VIX 狀況。")
+
+    st.markdown("### 📝 第一步：下載您的專屬守望者機器人")
+    
+    bot_code = f"""
+import yfinance as yf
+import pandas as pd
+import requests
+
+# 您的設定
+LINE_TOKEN = "{db_data.get('settings', {}).get('line_token', '請填入您的LINE_TOKEN')}"
+TICKERS = {[a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 美股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH'] + [a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 台股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH']}
+
+def send_line(msg):
+    if not LINE_TOKEN or LINE_TOKEN == "請填入您的LINE_TOKEN": return
+    requests.post('https://notify-api.line.me/api/notify', headers={{'Authorization': f'Bearer {{LINE_TOKEN}}'}}, data={{'message': msg}})
+
+def run_check():
+    alerts = []
+    try:
+        vix = yf.Ticker("^VIX").fast_info['lastPrice']
+        if vix > 25: alerts.append(f"⚠️ 大盤 VIX 飆高至 {{vix:.2f}}，系統建議啟動槓桿降載防禦。")
+    except: pass
+
+    for tk in TICKERS:
+        try:
+            df = yf.download(tk, period="1y", progress=False)
+            if df.empty: continue
+            if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+            df['H-L'] = df['High'] - df['Low']
+            df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+            df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+            df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+            df['ATR'] = df['TR'].rolling(14).mean()
+            
+            cur_p = float(df['Close'].iloc[-1])
+            max_p = float(df['High'].tail(60).max())
+            atr_v = float(df['ATR'].iloc[-1])
+            stop_p = max_p - (2.5 * atr_v)
+            
+            if cur_p < stop_p: alerts.append(f"🚨 {{tk}} 跌破 ATR 吊燈停損線 ({{stop_p:.2f}})！目前股價: {{cur_p:.2f}}。")
+        except: pass
+        
+    if alerts: send_line("\\n".join(["[🤖 Quant 每日巡邏報告]"] + alerts))
+    else: send_line("[🤖 Quant 每日巡邏報告]\\n✅ 全數資產皆在 ATR 安全線上，無異常。")
+
+if __name__ == "__main__":
+    run_check()
+"""
+    st.code(bot_code, language="python")
+    st.download_button("⬇️ 下載 cron_bot.py", file_name="cron_bot.py", mime="text/x-python", data=bot_code)
+    
+    st.markdown("""
+    ### ⚙️ 第二步：如何讓它每天免費自動執行？(使用 GitHub Actions)
+    1. 在 GitHub 建立一個私有 (Private) 儲存庫。
+    2. 將剛才下載的 `cron_bot.py` 以及一份 `requirements.txt` (裡面寫 `yfinance\\npandas\\nrequests`) 放進儲存庫。
+    3. 在儲存庫裡建立資料夾與檔案：`.github/workflows/main.yml`。
+    4. 將以下代碼貼入 `main.yml` 並存檔：
+    ```yaml
+    name: Daily Quant Bot Check
+    on:
+      schedule:
+        - cron: '30 6 * * *'
+    jobs:
+      build:
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@v2
+          - name: Set up Python
+            uses: actions/setup-python@v2
+            with:
+              python-version: '3.10'
+          - name: Install dependencies
+            run: pip install -r requirements.txt
+          - name: Run Bot
+            run: python cron_bot.py
+    ```
+    5. 完成！GitHub 會在每天台灣時間下午 2:30 免費啟動虛擬主機巡邏並發送 LINE 報告。
+    """)
+
+# ==========================================
+# 🔍 全球宏觀市場終端
 # ==========================================
 elif app_mode == "🔍 全球宏觀市場終端":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); margin-bottom: 24px;'>📊 全球宏觀市場終端 (Global Macro Terminal)</div>", unsafe_allow_html=True)
@@ -1413,7 +1648,6 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         last_close = float(df['Close'].dropna().iloc[-1]) if not df['Close'].dropna().empty else 0.0
                         ma200_val = float(df['MA3'].dropna().iloc[-1]) if not df['MA3'].dropna().empty else last_close
                         
-                        # 🛡️ 安全計算 high_52w
                         high_52w = float(df['High'].max()) if 'High' in df.columns and not pd.isna(df['High'].max()) else last_close
                         high_52w = max(high_52w, last_close)
                         
@@ -1453,7 +1687,7 @@ elif app_mode == "🔍 全球宏觀市場終端":
 
                         tab1, tab2 = st.tabs(["📈 AI 神經網絡戰略分析", "📰 全球市場事件與情緒掃描"])
                         with tab1:
-                            if st.button("✨ 啟動 Gemini 神經網絡推演", key=f"ai_btn_{clean_title}", type="secondary", use_container_width=True):
+                            if st.button("✨ 啟驚 Gemini 神經網絡推演", key=f"ai_btn_{clean_title}", type="secondary", use_container_width=True):
                                 if not MY_API_KEY: st.warning("⚠️ 請先於系統後台掛載 API Key。")
                                 else:
                                     with st.spinner("🧠 連接 AI 運算矩陣..."):
