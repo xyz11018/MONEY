@@ -135,7 +135,7 @@ try:
             
         USE_FIREBASE = True
 except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」。錯誤: {e}")
+    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」保命。錯誤: {e}")
     USE_FIREBASE = False
 
 def load_portfolio():
@@ -1428,10 +1428,10 @@ elif app_mode == "🧬 機構級阿爾法模型 (Alpha Quants)":
 # ==========================================
 elif app_mode == "🤖 24H 守望者腳本 (Cron Bot)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f766e 0%, #064e3b 100%); border-left-color: #34d399;'>🤖 24H 無頭守望者腳本產生器 (Cron Bot)</div>", unsafe_allow_html=True)
-    st.success("✅ **機器人腳本生成成功！** 您下方看到的程式碼**不是錯誤訊息**，而是系統為您專屬客製化寫好的自動化程式碼。請直接點擊下方下載按鈕。")
+    st.success("✅ **機器人腳本生成成功！** 下方為系統為您專屬客製化寫好的自動化程式碼，請直接點擊下方下載按鈕。")
     st.markdown("### 📝 第一步：下載您的專屬守望者機器人")
     
-    # 💡 核心防呆：使用 Python 原生 List 組合確保 f-string 絕對不會報錯
+    user_line_token = db_data.get('settings', {}).get('line_token', '請填入您的LINE_TOKEN')
     tks_us = [a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 美股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH']
     tks_tw = [a['ticker'] for a in aggregate_lots(db_data['schemes']['🎯 台股主力配置'].get('lots', []), {})[0] if a['ticker'] != 'CASH']
     bot_tickers = tks_us + tks_tw
@@ -1441,7 +1441,7 @@ import pandas as pd
 import requests
 
 # 您的設定
-LINE_TOKEN = "{db_data.get('settings', {{}}).get('line_token', '請填入您的LINE_TOKEN')}"
+LINE_TOKEN = "{user_line_token}"
 TICKERS = {bot_tickers}
 
 def send_line(msg):
@@ -1489,7 +1489,7 @@ if __name__ == "__main__":
     2. 將剛才下載的 `cron_bot.py` 以及一份 `requirements.txt` (寫入 `yfinance\\npandas\\nrequests`) 放進儲存庫。
     3. 在儲存庫裡建立資料夾與檔案：`.github/workflows/main.yml`。
     4. 將以下代碼貼入 `main.yml` 並存檔：
-```yaml
+    ```yaml
     name: Daily Quant Bot Check
     on:
       schedule:
