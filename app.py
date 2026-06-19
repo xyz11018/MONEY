@@ -92,12 +92,12 @@ hr { border-color: #e2e8f0; margin: 2rem 0; border-style: dashed; }
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 智慧代碼正名資料庫 (已擴充)
+# 🚀 智慧代碼正名資料庫 (已修正 6548 與 8070)
 STOCK_NAME_DICT = {
     "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2382": "廣達", "2308": "台達電",
     "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2603": "長榮", "3231": "緯創",
     "6669": "緯穎", "2303": "聯電", "3711": "日月光投控", "6285": "啟碁", "2344": "華邦電", 
-    "2337": "旺宏", "3034": "聯詠", "2379": "瑞昱", "5498": "凱崴", "6548": "長華*",
+    "2337": "旺宏", "3034": "聯詠", "2379": "瑞昱", "5498": "凱崴", "6548": "長科*", "8070": "長華*",
     "0050": "元大台灣50", "006208": "富邦台50", "0052": "富邦科技", "00881": "富邦台灣半導體", 
     "0056": "元大高股息", "00878": "國泰永續高股息", "00919": "群益台灣精選高息", 
     "00929": "復華台灣科技優息", "00713": "元大台灣高息低波", "00915": "凱基優選高股息30", 
@@ -696,7 +696,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
-    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總回報 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總損益率 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -1541,6 +1541,79 @@ if __name__ == "__main__":
     ```
     5. 完成！GitHub 會在每天台灣時間下午 2:30 免費啟動虛擬主機巡邏並發送 LINE 報告。
     """)
+
+# ==========================================
+# 🧪 戰略回測實驗室 (Backtesting Lab)
+# ==========================================
+elif app_mode == "🧪 戰略回測實驗室":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #4338ca 0%, #0f172a 100%); border-left-color: #34d399;'>🧪 歷史量化回測與策略沙盒 (Backtesting Sandbox)</div>", unsafe_allow_html=True)
+    st.info("💡 **模組說明**：輸入資產代碼並調整您的量化指標（均線與 ATR 停利）。系統將模擬在歷史資料中套用您的策略。")
+
+    c_b1, c_b2, c_b3, c_b4, c_b5 = st.columns([1.5, 1, 1, 1, 1])
+    test_ticker = c_b1.text_input("輸入測試標的", value="0050", placeholder="例如: 0050, QQQ, TQQQ")
+    test_period = c_b2.selectbox("回測歷史長度", ["1y", "3y", "5y", "10y"], index=2)
+    short_ma_days = c_b3.number_input("短均線 (MA Short)", min_value=5, max_value=60, value=50)
+    long_ma_days = c_b4.number_input("長均線 (MA Long)", min_value=20, max_value=300, value=200)
+    test_atr_mult = c_b5.number_input("ATR 停利乘數", min_value=1.0, max_value=5.0, value=2.5, step=0.1)
+
+    if st.button("🚀 啟動演算法歷史回測", type="primary", use_container_width=True):
+        resolved_tk, tk_name = smart_resolve_ticker(test_ticker, MY_API_KEY)
+        if resolved_tk:
+            with st.spinner(f"正在針對 {tk_name} ({resolved_tk}) 進行高頻歷史模擬回測..."):
+                df_test = yf.download(resolved_tk, period=test_period, progress=False, session=yf_session)
+                if not df_test.empty:
+                    if isinstance(df_test.columns, pd.MultiIndex): df_test.columns = df_test.columns.get_level_values(0)
+                    df_test.dropna(subset=['Close'], inplace=True)
+                    
+                    df_test['MA_S'] = df_test['Close'].rolling(window=short_ma_days).mean()
+                    df_test['MA_L'] = df_test['Close'].rolling(window=long_ma_days).mean()
+                    
+                    df_test['H-L'] = df_test['High'] - df_test['Low']
+                    df_test['H-PC'] = abs(df_test['High'] - df_test['Close'].shift(1))
+                    df_test['L-PC'] = abs(df_test['Low'] - df_test['Close'].shift(1))
+                    df_test['TR'] = df_test[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+                    df_test['ATR'] = df_test['TR'].rolling(window=14).mean()
+                    df_test['Stop_Loss'] = df_test['High'].rolling(window=22).max() - (test_atr_mult * df_test['ATR'])
+                    
+                    df_test.dropna(inplace=True)
+                    
+                    df_test['Signal'] = np.where((df_test['MA_S'] > df_test['MA_L']) & (df_test['Close'] > df_test['Stop_Loss']), 1, 0)
+                    df_test['Position'] = df_test['Signal'].shift(1).fillna(0)
+                    
+                    df_test['Market_Returns'] = df_test['Close'].pct_change()
+                    df_test['Strategy_Returns'] = df_test['Position'] * df_test['Market_Returns']
+                    
+                    df_test['Buy_and_Hold'] = (1 + df_test['Market_Returns']).cumprod() * 100
+                    df_test['Quant_Strategy'] = (1 + df_test['Strategy_Returns']).cumprod() * 100
+                    
+                    bh_return = df_test['Buy_and_Hold'].iloc[-1] - 100
+                    strat_return = df_test['Quant_Strategy'].iloc[-1] - 100
+                    
+                    df_test['BnH_Peak'] = df_test['Buy_and_Hold'].cummax()
+                    df_test['BnH_DD'] = (df_test['Buy_and_Hold'] - df_test['BnH_Peak']) / df_test['BnH_Peak']
+                    bnh_mdd = df_test['BnH_DD'].min() * 100
+                    
+                    df_test['Strat_Peak'] = df_test['Quant_Strategy'].cummax()
+                    df_test['Strat_DD'] = (df_test['Quant_Strategy'] - df_test['Strat_Peak']) / df_test['Strat_Peak']
+                    strat_mdd = df_test['Strat_DD'].min() * 100
+                    
+                    st.markdown("### 🏆 基準對照：法人級績效淚表 (Tearsheet)")
+                    c_res1, c_res2, c_res3, c_res4 = st.columns(4)
+                    c_res1.metric("B&H 死抱總報酬", f"{bh_return:.2f}%")
+                    c_res2.metric("B&H 最大回撤 (MDD)", f"{bnh_mdd:.2f}%")
+                    c_res3.metric("量化策略總報酬", f"{strat_return:.2f}%", f"{strat_return - bh_return:+.2f}% vs B&H")
+                    c_res4.metric("量化策略最大回撤", f"{strat_mdd:.2f}%", f"{abs(bnh_mdd) - abs(strat_mdd):+.2f}% 避險大幅縮減")
+                    
+                    if strat_return > bh_return: st.success("🎉 演算法成功打敗大盤！完美發揮防守功能。")
+                    else: st.warning("⚠️ 策略落後死抱。這通常發生在單邊大牛市。")
+
+                    fig_bt = go.Figure()
+                    fig_bt.add_trace(go.Scatter(x=df_test.index, y=df_test['Buy_and_Hold'], name='無腦買進 (Buy & Hold)', line=dict(color='#64748b', width=2)))
+                    fig_bt.add_trace(go.Scatter(x=df_test.index, y=df_test['Quant_Strategy'], name='量化策略 (Quant Strategy)', line=dict(color='#10b981', width=3)))
+                    fig_bt.update_layout(title="資金累積成長淨值曲線 (基準: 100)", hovermode="x unified", template="plotly_white", height=500)
+                    st.plotly_chart(fig_bt, use_container_width=True)
+                else: st.error("無歷史數據可供回測。")
+        else: st.error("無效的資產代碼。")
 
 # ==========================================
 # 🔍 全球宏觀市場終端
