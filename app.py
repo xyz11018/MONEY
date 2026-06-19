@@ -1700,4 +1700,27 @@ elif app_mode == "🔍 全球宏觀市場終端":
                                             model = genai.GenerativeModel("gemini-2.5-flash")
                                             st.info(model.generate_content(prompt).text)
 
-                        with tab
+                        with tab2:
+                            try: news_list = yf.Ticker(ticker_input, session=yf_session).news[:5]
+                            except: news_list = []
+                            if news_list:
+                                news_text_for_ai = ""
+                                for i, n in enumerate(news_list):
+                                    title = n.get('title', '無標題')
+                                    publisher = n.get('publisher', '未知新聞源')
+                                    link = n.get('link', '#')
+                                    st.markdown(f"**{i+1}. [{title}]({link})** _(來源: {publisher})_")
+                                    news_text_for_ai += f"標題: {title}\n來源: {publisher}\n\n"
+                                
+                                st.markdown("---")
+                                if st.button("✨ 讓 Gemini 總結市場多空動能情緒", key=f"news_ai_btn_{clean_title}", type="primary", use_container_width=True):
+                                    if not MY_API_KEY: st.warning("⚠️ 未偵測到 API Key。")
+                                    else:
+                                        with st.spinner("🧠 啟動事件驅動分析引擎..."):
+                                            news_prompt = f"請判讀以下新聞的隱含多空情緒：\n\n{news_text_for_ai}"
+                                            try:
+                                                model = genai.GenerativeModel("gemini-2.5-flash")
+                                                st.info(model.generate_content(news_prompt).text)
+                                            except Exception as e: st.error("❌ 運算模組解析失敗。")
+                            else: st.info("目前資料庫無收錄近點催化劑事件。")
+            except Exception as e: st.error(f"❌ 底層錯誤：{str(e)}")
