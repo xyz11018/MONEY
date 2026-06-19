@@ -135,7 +135,7 @@ try:
             
         USE_FIREBASE = True
 except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」保命。錯誤: {e}")
+    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線模式」。錯誤: {e}")
     USE_FIREBASE = False
 
 def load_portfolio():
@@ -408,7 +408,8 @@ def aggregate_lots(lots, targets):
     perf["total_actions"] = len(sorted_lots)
     return res, perf
 
-def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
+# 💡 核心優化：手續費折讓率參數化控制
+def calculate_net_pnl_stats(item, is_tw_market, fx_rate, tw_discount=0.28, us_fee_val=0.0):
     base_tk = item['ticker'].split('.')[0]
     shares = item.get('init_shares', 0)
     avg_buy_p = item.get('buy_price', 0)
@@ -419,24 +420,30 @@ def calculate_net_pnl_stats(item, is_tw_market, fx_rate):
         return gross_buy_amt, (current_p * fx_rate * shares) if item['ticker'] != "CASH" else shares, 0, 0, 0, 0
     
     tw_standard_fee_rate = 0.001425
-    tw_discount = 0.2
-    tw_min_fee = 1.0
-    us_fee_rate = 0.0018
-    us_min_fee = 3.0
+    tw_min_fee = 20.0 # 券商基本低消
     tw_tax_rate = 0.001 if (len(base_tk) == 5 or len(base_tk) == 6 or base_tk.startswith('00')) else 0.003
 
-    if is_tw_market: est_buy_fee = max(tw_min_fee, int(round(gross_buy_amt * tw_standard_fee_rate * tw_discount))) if shares > 0 else 0
-    else: est_buy_fee = max(us_min_fee, gross_buy_amt * us_fee_rate) if shares > 0 else 0
+    if is_tw_market: 
+        # 買進手續費 (考慮低消與自訂折讓)
+        est_buy_fee = gross_buy_amt * tw_standard_fee_rate * tw_discount
+        if est_buy_fee < tw_min_fee and gross_buy_amt > 0: est_buy_fee = tw_min_fee
+        est_buy_fee = int(round(est_buy_fee))
+    else: 
+        est_buy_fee = us_fee_val if shares > 0 else 0
+        
     net_buy_cost_curr = gross_buy_amt + est_buy_fee
 
     gross_sell_amt = shares * current_p
     if is_tw_market:
-        est_sell_fee = max(tw_min_fee, int(round(gross_sell_amt * tw_standard_fee_rate * tw_discount))) if shares > 0 else 0
-        est_sell_tax = int(round(gross_sell_amt * tw_tax_rate)) if shares > 0 else 0
+        # 賣出手續費 + 賣出證交稅
+        est_sell_fee = gross_sell_amt * tw_standard_fee_rate * tw_discount
+        if est_sell_fee < tw_min_fee and gross_sell_amt > 0: est_sell_fee = tw_min_fee
+        est_sell_fee = int(round(est_sell_fee))
+        est_sell_tax = int(round(gross_sell_amt * tw_tax_rate))
         net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
     else:
-        est_sell_fee = max(us_min_fee, gross_sell_amt * us_fee_rate) if shares > 0 else 0
-        est_sell_tax = (gross_sell_amt * 0.0000278) + min(shares * 0.000166, 8.32) if shares > 0 else 0
+        est_sell_fee = us_fee_val if shares > 0 else 0
+        est_sell_tax = (gross_sell_amt * 0.0000278) if shares > 0 else 0 # 美股 SEC 費率
         net_sell_amt_curr = gross_sell_amt - est_sell_fee - est_sell_tax
         
     mult = 1.0 if is_tw_market else fx_rate
@@ -477,6 +484,8 @@ twd_data = fetch_market_data("TWD=X")
 current_rate = twd_data["price"] if twd_data and twd_data["price"] > 0 else 32.5
 vix_data = fetch_market_data("^VIX")
 current_vix = vix_data["price"] if vix_data and vix_data["price"] > 0 else 15.0
+
+db_data = load_portfolio()
 
 # ==========================================
 # 📊 左側邊欄：總經面板
@@ -570,9 +579,9 @@ if app_mode == "⚙️ 系統全域設定 (Settings)":
     json_string = json.dumps(db_data, ensure_ascii=False, indent=4)
     c_bak1.download_button("⬇️ 點此下載最新資料庫備份 (JSON)", file_name=f"quant_portfolio_backup_{datetime.date.today()}.json", mime="application/json", data=json_string, use_container_width=True)
     
-    uploaded_file = c_bak2.file_uploader("⬆️ 上傳備份檔案以還原", type=["json"], label_visibility="collapsed")
+    uploaded_file = st.file_uploader("⬆️ 上傳備份檔案以還原", type=["json"], key="settings_backup_uploader")
     if uploaded_file is not None:
-        if c_bak2.button("⚠️ 確認覆蓋並還原資料", use_container_width=True):
+        if st.button("⚠️ 確認覆蓋並還原資料", use_container_width=True, key="settings_backup_confirm"):
             try:
                 new_data = json.load(uploaded_file)
                 save_portfolio(new_data)
@@ -592,9 +601,6 @@ elif app_mode == "📖 系統操作指南 (User Manual)":
 
     with st.expander("📍 第二階段：日常盯盤 (看懂系統發出的買賣訊號)"):
         st.markdown("### 1. 看懂總經大盤的「三大紅綠燈」\n在畫面最左邊側邊欄，有三個決定您慢步建倉的指標：\n* **🏛 利差 (10Y-3M)**：若亮紅燈代表債券倒掛（衰退前兆），嚴禁重壓。\n* **📉 VIX 恐慌指數**：衡量市場恐慌度。若數值大於 25，系統的演算法會強迫將您持有的槓桿部位的建議權重**強制砍半**。\n* **🕸️ 市場寬度 (S&P500)**：若破線，系統會拒絕加碼槓桿。\n\n### 2. 認識高密度微型矩陣 (Sparklines)\n法人是沒空一張一張圖表點開看的。在 `📊 🛡️ 機構級量化風控與盯盤中心` 的最上方，我們為您準備了 **「持倉動能總覽矩陣」**，您可以直接在表格中看到近 30 日的微型走勢，一眼掃描全庫存多空！")
-
-    with st.expander("📍 第三階段：資金控管與進階模型 (加碼、停損、最佳化)"):
-        st.markdown("### 1. 智慧增量資金注水 (Pyramiding)\n每個月發薪水想定期定額？請到 **`💰 智慧階梯式增量資金注水控制台`** 分頁。\n輸入您這個月要投入的現金，並選擇策略：\n* **📈 右側順勢加碼**：把錢全部集中打在「目前均線呈現多頭排列」的強勢股上，讓獲利奔跑。\n* **📉 左側分批抄底**：只把錢拿去買 RSI < 40 的超跌委屈股。\n\n### 2. 🧬 機構級阿爾法模型 (Alpha Quants)\n* **馬可維茲效率前緣 (MVO)**：讓電腦跑 5000 次隨機試算，告訴您最完美的持股比例是多少，以達到最高夏普值。\n* **曼斯菲爾德強弱 (RS)**：淘汰跑輸大盤的平庸股票。\n* **歷史 VaR 壓力測試**：模擬如果遇到像 2020 疫情崩盤那樣的 5% 黑天鵝機率，您的帳戶一天會蒸發多少錢。")
 
 # ==========================================
 # 🏠 1. 宏觀資產矩陣 (Dashboard)
@@ -646,7 +652,8 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
                             treemap_data.append({"Market": "法幣保留款 (CASH)", "Asset": "現金 (Cash)", "Value_NTD": now_val_ntd, "PnL_Pct": 0.0})
                     else: 
                         now_val_ntd = now_p * rate * init_sh
-                        net_cost, _, _, _, _, net_pnl_pct = calculate_net_pnl_stats({**asset, "now_p": now_p}, is_tw, rate)
+                        # 全局控制台預設採用標準折讓與零低消精算
+                        net_cost, _, _, _, net_pnl_ntd, net_pnl_pct = calculate_net_pnl_stats({**asset, "now_p": now_p}, is_tw, rate, tw_discount=0.28, us_fee_val=0.0)
                         asset_cost_ntd = net_cost
                         
                         hist_series = m_data.get("history_close")
@@ -683,7 +690,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
-    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總回報 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總損益率 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -774,6 +781,17 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
     
     tab_monitor, tab_edit, tab_inject = st.tabs(["📊 🛡️ 機構級量化風控與盯盤中心", "📓 量化覆盤與日誌審判室", "💰 智慧階梯式增量資金注水控制台"])
     
+    # 💡 核心升級：加入自訂券商折讓率折算，對齊 APP 庫存損益數值
+    with tab_monitor:
+        with st.expander("⚙️ 券商交易稅費與折讓率設定 (Broker Fee & Tax Calibration)"):
+            c_fee1, c_fee2 = st.columns(2)
+            if is_tw_mode:
+                tw_discount_input = c_fee1.number_input("台股手續費折讓折扣 (例如: 2.8折請輸入 0.28 / 6折輸入 0.6)", min_value=0.0, max_value=1.0, value=0.28, step=0.01)
+                us_fee_input = 0.0
+            else:
+                tw_discount_input = 0.28
+                us_fee_input = c_fee2.number_input("美股單筆交易低消/手續費 (複委託適用，若海外券商免手續費請填 0)", min_value=0.0, value=0.0, step=1.0)
+    
     current_view_data = []
     local_total_val, local_total_cost, local_total_exposure = 0, 0, 0
     tech_exposure_val = 0
@@ -788,7 +806,12 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     now_p = m_data.get("price", 0)
                     date_str = m_data.get("date", "")
                     
-                    net_cost, net_val, total_fees, total_tax, net_pnl, net_pnl_pct = calculate_net_pnl_stats({**asset, "now_p": now_p}, is_tw_mode, current_rate)
+                    # 💡 核心修正：帶入自訂折讓係數精算淨損益
+                    net_cost, net_val, total_fees, total_tax, net_pnl, net_pnl_pct = calculate_net_pnl_stats(
+                        {**asset, "now_p": now_p}, is_tw_mode, current_rate, 
+                        tw_discount=tw_discount_input if 'tw_discount_input' in locals() else 0.28,
+                        us_fee_val=us_fee_input if 'us_fee_input' in locals() else 0.0
+                    )
                     gross_now_val = net_val if asset["ticker"] != "CASH" else asset.get("init_shares", 0) * (1.0 if is_tw_mode else current_rate)
                     
                     lev = asset.get("leverage", 1.0)
@@ -826,15 +849,14 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                         "net_pnl": net_pnl, "net_pnl_pct": net_pnl_pct, "ann_roi": ann_roi, "yoc": yoc, "dist_52w": dist_52w,
                         "drawdown": m_data.get("drawdown", 0), "trailing_dd": trailing_dd, "max_since_buy": max_since_buy,
                         "ma50": m_data.get("ma50", 0), "ma200": m_data.get("ma200", 0), "bias": m_data.get("bias", 0),
-                        "rsi": m_data.get("rsi", 50), "kd_k": m_data.get("kd_k", 50), "atr": m_data.get("atr", 0.0),
+                        "rsi": m_data.get("rsi", 50), "kd_k": m_data.get("kd_k", 50), "regular_pnl": (now_p - asset.get('buy_price', 0)) * asset.get('init_shares', 0) * (1.0 if is_tw_mode else current_rate),
                         "earliest_buy_date": asset.get("earliest_buy_date"), "history_close": hist_close, "full_df": m_data.get("full_df")
                     })
 
-    # 📊 子分頁 1: 動態監控盤
+    # 📊 子分頁 1: 動態監控盤內層渲染
     with tab_monitor:
         if current_view_data:
             local_total_profit = local_total_val - local_total_cost
-            total_leverage_ratio = local_total_exposure / local_total_val if local_total_val > 0 else 0.0
             tech_ratio = (tech_exposure_val / local_total_val * 100) if local_total_val > 0 else 0
             
             pnl_color = "#10b981" if local_total_profit >= 0 else "#ef4444"
@@ -843,11 +865,11 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             st.markdown(f"""
             <div style='display:flex; gap: 16px; margin-bottom: 24px; flex-wrap:wrap;'>
                 <div class='kpi-card' style='flex:1; min-width:180px; border-top: 4px solid #3b82f6;'>
-                    <div class='data-label'>建倉總成本 (Gross Cost Basis)</div>
+                    <div class='data-label'>含稅費建倉淨成本 (Net Cost Basis)</div>
                     <div class='ticker-display'>NTD {fmt_money(local_total_cost)}</div>
                 </div>
                 <div class='kpi-card' style='flex:1; min-width:180px; border-top: 4px solid #8b5cf6;'>
-                    <div class='data-label'>即時變現淨市值 (Mark-to-Market)</div>
+                    <div class='data-label'>即時可折現淨市值 (Mark-to-Market)</div>
                     <div class='ticker-display'>NTD {fmt_money(local_total_val)}</div>
                 </div>
                 <div class='kpi-card' style='flex:1; min-width:180px; border-top: 4px solid #f59e0b;'>
@@ -855,7 +877,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     <div class='ticker-display' style='color:#f59e0b !important;'>{total_leverage_ratio:.2f}x</div>
                 </div>
                 <div class='kpi-card' style='flex:1; min-width:180px; border-top: 4px solid {pnl_color};'>
-                    <div class='data-label'>多頭未實現損益 (Unrealized PnL)</div>
+                    <div class='data-label'>已扣除手續費證交稅・淨損益 (Net PnL) 🏦</div>
                     <div class='ticker-display' style='color:{pnl_color} !important;'>{pnl_sign}NTD {fmt_money(local_total_profit)}</div>
                 </div>
             </div>
@@ -876,7 +898,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 spark_data.append({
                     "標的": f"{clean_name} {zh_name}",
                     "庫存 (股/元)": int(item.get('init_shares', 0)),
-                    "未實現 PnL(%)": item.get('net_pnl_pct', 0.0),
+                    "未實現實質保後損益(%)": item.get('net_pnl_pct', 0.0),
                     "現市值佔比": real_pct,
                     "近30日動能趨勢": spark_list
                 })
@@ -886,7 +908,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 st.dataframe(
                     df_spark,
                     column_config={
-                        "未實現 PnL(%)": st.column_config.NumberColumn(format="%.1f%%"),
+                        "未實現實質保後損益(%)": st.column_config.NumberColumn(format="%.2f%%"),
                         "現市值佔比": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100),
                         "近30日動能趨勢": st.column_config.LineChartColumn(y_min=0)
                     },
@@ -989,7 +1011,9 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     c[2].markdown(f"<div class='data-label'>已實現淨利 (Realized):</div><div class='data-value' style='color:#10b981 !important;'>NTD {fmt_money(item.get('realized_pnl', 0))}</div>", unsafe_allow_html=True)
                     c[3].markdown(f"<div class='data-label'>Beta 風險:</div><div class='data-value'>0.00x</div>", unsafe_allow_html=True)
                 else:
+                    # 💡 核心修正：卡片面板全部歸正，改為顯示扣除手續費證交稅的真實「實質未實現淨損益」
                     pnl_ntd = item.get('net_pnl', 0)
+                    pnl_pct = item.get('net_pnl_pct', 0.0)
                     item_pnl_color = "#10b981" if pnl_ntd >= 0 else "#ef4444"
                     item_pnl_sign = "+" if pnl_ntd >= 0 else ""
                     
@@ -999,7 +1023,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     trail_color = "#ef4444" if is_trailing_stop else "#64748b"
                     
                     c[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{zh_name}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {n_p:.2f}</div><div style='margin-top:4px; font-size:0.9rem; font-weight:900;'>庫存: {fmt_money(shares_qty)} 股</div>", unsafe_allow_html=True)
-                    c[1].markdown(f"<div class='data-label'>變現淨市值 (M2M Val):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div><div class='data-label' style='margin-top:12px;'>未實現損益 (PnL):</div><div class='data-value' style='color:{item_pnl_color} !important;'>{item_pnl_sign}{fmt_money(pnl_ntd)} ({item.get('ann_roi', 0):.1f}%)</div>", unsafe_allow_html=True)
+                    c[1].markdown(f"<div class='data-label'>可變現資產淨值 (M2M):</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div><div class='data-label' style='margin-top:12px;'>實質保後淨損益 (Net PnL):</div><div class='data-value' style='color:{item_pnl_color} !important;'>{item_pnl_sign}{fmt_money(pnl_ntd)} ({pnl_pct:.2f}%)</div>", unsafe_allow_html=True)
                     c[2].markdown(f"<div class='data-label'>長線趨勢 (Trend):</div><div>{trend_tag}</div><div class='data-label' style='margin-top:12px;'>ATR 吊燈防守線:</div><div class='data-value' style='color:{trail_color} !important;'>{stop_loss_price:.2f}</div>", unsafe_allow_html=True)
                     
                     bias_val = item.get('bias', 0)
@@ -1184,8 +1208,8 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             for item in current_view_data:
                 ma50_v, ma200_v, rsi_val = item.get("ma50", 1), item.get("ma200", 1), item.get("rsi", 50)
                 is_bear_cross = (ma50_v < ma200_v)
-                if "右側順勢" in inject_mode and is_bear_cross and item.get("ticker") != "CASH": continue
-                if "左側抄底" in inject_mode and rsi_val >= 40 and item.get("ticker") != "CASH": continue
+                if "right" in inject_mode and is_bear_cross and item.get("ticker") != "CASH": continue
+                if "left" in inject_mode and rsi_val >= 40 and item.get("ticker") != "CASH": continue
                 eligible_items.append(item)
                 
             if not eligible_items: st.write("無符合資格之現貨標的。")
@@ -1489,7 +1513,7 @@ if __name__ == "__main__":
     2. 將剛才下載的 `cron_bot.py` 以及一份 `requirements.txt` (寫入 `yfinance\\npandas\\nrequests`) 放進儲存庫。
     3. 在儲存庫裡建立資料夾與檔案：`.github/workflows/main.yml`。
     4. 將以下代碼貼入 `main.yml` 並存檔：
-    ```yaml
+```yaml
     name: Daily Quant Bot Check
     on:
       schedule:
@@ -1573,9 +1597,6 @@ elif app_mode == "🧪 戰略回測實驗室":
                     c_res3.metric("量化策略總報酬", f"{strat_return:.2f}%", f"{strat_return - bh_return:+.2f}% vs B&H")
                     c_res4.metric("量化策略最大回撤", f"{strat_mdd:.2f}%", f"{abs(bnh_mdd) - abs(strat_mdd):+.2f}% 避險大幅縮減")
                     
-                    if strat_return > bh_return: st.success("🎉 演算法成功打敗大盤！完美發揮防守功能。")
-                    else: st.warning("⚠️ 策略落後死抱。這通常發生在單邊大牛市。")
-
                     fig_bt = go.Figure()
                     fig_bt.add_trace(go.Scatter(x=df_test.index, y=df_test['Buy_and_Hold'], name='無腦買進 (Buy & Hold)', line=dict(color='#64748b', width=2)))
                     fig_bt.add_trace(go.Scatter(x=df_test.index, y=df_test['Quant_Strategy'], name='量化策略 (Quant Strategy)', line=dict(color='#10b981', width=3)))
@@ -1585,7 +1606,7 @@ elif app_mode == "🧪 戰略回測實驗室":
         else: st.error("無效的資產代碼。")
 
 # ==========================================
-# 🔍 6. 全球宏觀市場終端
+# 🔍 全球宏觀市場終端
 # ==========================================
 elif app_mode == "🔍 全球宏觀市場終端":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); margin-bottom: 24px;'>📊 全球宏觀市場終端 (Global Macro Terminal)</div>", unsafe_allow_html=True)
@@ -1623,8 +1644,8 @@ elif app_mode == "🔍 全球宏觀市場終端":
                         rs = gain / loss
                         df['RSI'] = 100 - (100 / (1 + rs))
                         
-                        if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5", "MA20", "MA200"
-                        else: ma1, ma2, ma3, n1, n2, n3 = 5, 10, 50, "MA5", "MA10", "MA50"
+                        if k_period == "日K": ma1, ma2, ma3, n1, n2, n3 = 5, 20, 200, "MA5", "MA200"
+                        else: ma1, ma2, ma3, n1, n2, n3 = 5, 10, 50, "MA5", "MA50"
                             
                         df['MA1'] = df['Close'].rolling(ma1).mean()
                         df['MA2'] = df['Close'].rolling(ma2).mean()
