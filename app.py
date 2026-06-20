@@ -92,7 +92,7 @@ hr { border-color: #e2e8f0; margin: 2rem 0; border-style: dashed; }
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 智慧代碼正名資料庫 (已修正 6548 與 8070)
+# 🚀 智慧代碼正名資料庫
 STOCK_NAME_DICT = {
     "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2382": "廣達", "2308": "台達電",
     "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2603": "長榮", "3231": "緯創",
@@ -195,7 +195,6 @@ def resolve_suffix(base_tk):
         except: pass
     return f"{base_tk}.TW" if base_tk[0].isdigit() else base_tk
 
-# 💡 核心升級：強制 TTL Cache Bust，確保新版爬蟲立刻生效
 @st.cache_data(show_spinner=False, ttl=3599)
 def smart_resolve_ticker(user_input, api_key=""):
     t = user_input.strip().upper()
@@ -209,16 +208,13 @@ def smart_resolve_ticker(user_input, api_key=""):
     match = re.search(r'([A-Z0-9]{2,8})', t)
     if match: potential_tk = match.group(1)
 
-    # 1. 優先查閱內建高速快取字典
     if potential_tk in STOCK_NAME_DICT: return resolve_suffix(potential_tk), STOCK_NAME_DICT[potential_tk]
     for tk, name in STOCK_NAME_DICT.items():
         if t == name.upper() or name.upper() in t: return resolve_suffix(tk), name
 
-    # 2. 💡 終極解法：強制爬取 Yahoo 奇摩股市原生中文標題 (支援台/美股)
     try:
         r_tw = requests.get(f"https://tw.stock.yahoo.com/quote/{potential_tk}", headers=yf_session.headers, timeout=3)
         if r_tw.status_code == 200:
-            # 擷取 `<title>凱崴 (5498.TWO) 股價...` 中的中文名稱
             title_match = re.search(r'<title>(.*?)\s*\([A-Za-z0-9.]+\)', r_tw.text)
             if title_match:
                 zh_name = title_match.group(1).strip()
@@ -226,7 +222,6 @@ def smart_resolve_ticker(user_input, api_key=""):
                     return resolve_suffix(potential_tk), zh_name
     except: pass
 
-    # 3. 若網頁爬取失敗，退回使用 API
     try:
         r = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(potential_tk)}&lang=zh-Hant-TW&region=TW", headers=yf_session.headers, timeout=3)
         if r.status_code == 200 and r.json().get('quotes'):
@@ -598,16 +593,61 @@ if app_mode == "⚙️ 系統全域設定 (Settings)":
 # ==========================================
 elif app_mode == "📖 系統操作指南 (User Manual)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left-color: #64748b;'>📖 量化終端實戰操作指南 (Quant Playbook)</div>", unsafe_allow_html=True)
-    st.info("這份手冊將教您如何將這個系統從『單純的記帳軟體』晉升為『為您賺錢的量化大腦』。請按照以下階段熟悉您的戰鬥中心。")
+    st.info("💡 這不僅是一個記帳軟體，更是一套融合了華爾街「趨勢動能」與「量化風控」的操盤大腦。請遵循以下三大階段，建立您無懈可擊的交易紀律。")
     
     with st.expander("📍 第一階段：新手起步 (如何建立與管理庫存)", expanded=True):
-        st.markdown("### 1. 建立您的第一筆庫存\n要讓系統為您精算損益，您必須告訴系統您買了什麼。\n* **步驟**：點擊左側選單的 `🇹🇼 台股主力量化倉位` 或 `🇺🇸 美股` ➡️ 切換到 `📓 量化覆盤與日誌審判室` 分頁。\n* **操作**：在「交易日誌快速登錄」表單中，選擇 **🟢 開倉買進 (BUY)**，輸入代碼（例如 `0050` 或 `2330`）、股數、單價與日期。\n* **備註 (Memo)**：強烈建議填寫您買進的理由（例如「看均線黃金交叉買進」），這會在未來的 AI 覆盤中發揮極大作用。\n\n### 2. 如何賣出並計算獲利？\n系統採用專業的**「平均成本結算法」**。\n* 當您選擇 **🔴 減碼賣出 (SELL)** 時，系統會自動用您當時的「平均買進成本」來扣除成本，並將賺到的錢記錄到 **「歷史已實現淨利」** 中。\n* 若您將某檔股票「全數賣出」且把目標權重設為 0%，系統會自動將它從盤面上隱藏，保持版面乾淨。")
+        st.markdown("""
+        ### 1. 建立您的第一筆庫存
+        要讓系統為您精算損益，您必須告訴系統您買了什麼。
+        * **步驟**：點擊左側導覽列的 `🇹🇼 台股主力量化倉位` 或 `🇺🇸 美股主力量化倉位` ➡️ 切換到 `📓 量化覆盤與日誌審判室` 分頁。
+        * **操作**：在「交易日誌快速登錄」表單中，選擇 **🟢 開倉買進 (BUY)**，輸入代碼（例如 `0050` 或 `QQQ`）、股數、單價與日期。
+        * **備註 (Memo)**：這非常重要！強烈建議填寫您買進的理由（例如：「看均線黃金交叉買進」、「聽隔壁老王說的」）。這些備註未來會被交給 AI 毒舌教練，它會幫您揪出您的情緒化交易盲點。
+        
+        ### 2. 如何賣出並計算獲利？
+        系統底層採用專業的**「平均成本結算法」**。
+        * 當您選擇 **🔴 減碼賣出 (SELL)** 時，系統會自動用您當時累積的「平均買進成本」來扣除結算，並將賺或賠的錢記錄到 **「歷史已實現淨利」** 的水庫中。
+        * 若您將某檔股票「全數賣出」且把目標權重 (Target %) 設為 0，系統就會自動將它從您的主力監控盤上隱藏，保持畫面極簡乾淨。
+        """)
 
-    with st.expander("📍 第二階段：日常盯盤 (看懂系統發出的買賣訊號)"):
-        st.markdown("### 1. 看懂總經大盤的「三大紅綠燈」\n在畫面最左邊側邊欄，有三個決定您慢步建倉的指標：\n* **🏛 利差 (10Y-3M)**：若亮紅燈代表債券倒掛（衰退前兆），嚴禁重壓。\n* **📉 VIX 恐慌指數**：衡量市場恐慌度。若數值大於 25，系統的演算法會強迫將您持有的槓桿部位的建議權重**強制砍半**。\n* **🕸️ 市場寬度 (S&P500)**：若破線，系統會拒絕加碼槓桿。\n\n### 2. 認識高密度微型矩陣 (Sparklines)\n法人是沒空一張一張圖表點開看的。在 `📊 🛡️ 機構級量化風控與盯盤中心` 的最上方，我們為您準備了 **「持倉動能總覽矩陣」**，您可以直接在表格中看到近 30 日的微型走勢，一眼掃描全庫存多空！")
+    with st.expander("📍 第二階段：總經燈號與戰鬥卡片 (核心判讀)"):
+        st.markdown("""
+        ### 1. 總經三大紅綠燈 (決定您今天的油門與煞車)
+        在畫面最左側邊欄，系統隨時監控三個決定您能否開槓桿的全球總經指標：
+        * **🏛 利差 (10Y-3M) [經濟衰退吹哨者]**：美國10年期公債減去3個月期殖利率。正常應為正數，若變為「負值 (🔴 倒掛警戒)」，代表市場極度悲觀，通常是衰退的前兆。
+          * 👉 **操作建議**：出現倒掛時，絕對禁止重壓高槓桿部位 (如正2 ETF)，並逐步提高現金保留款水位。
+        * **📉 VIX 恐慌指數 [市場情緒溫度計]**：衡量標普500未來30天的預期波動率。
+          * 👉 **操作建議**：當 VIX > 25 (恐慌) 時，系統的演算法會**強制**將您持有的「槓桿型資產」建議權重直接砍半！請聽從系統指令減碼降載。
+        * **🕸️ 市場寬度 (S&P500) [真假牛市照妖鏡]**：比對美股大盤是否穩站在 200 日均線(年線)之上。若跌破，代表多數股票都在跌。
+          * 👉 **操作建議**：若亮起「🔴 系統性破線風險」，系統將自動拒絕您加碼槓桿部位，避免接到一路向下的刀子。
 
-    with st.expander("📍 第三階段：資金控管與進階模型 (加碼、停損、最佳化)"):
-        st.markdown("### 1. 智慧增量資金注水 (Pyramiding)\n每個月發薪水想定期定額？請到 **`💰 智慧階梯式增量資金注水控制台`** 分頁。\n輸入您這個月要投入的現金，並選擇策略：\n* **📈 右側順勢加碼**：把錢全部集中打在「目前均線呈現多頭排列」的強勢股上，讓獲利奔跑。\n* **📉 左側分批抄底**：只把錢拿去買 RSI < 40 的超跌委屈股。\n\n### 2. 🧬 機構級阿爾法模型 (Alpha Quants)\n* **馬可維茲效率前緣 (MVO)**：讓電腦跑 5000 次隨機試算，告訴您最完美的持股比例是多少，以達到最高夏普值。\n* **曼斯菲爾德強弱 (RS)**：淘汰跑輸大盤的平庸股票。\n* **歷史 VaR 壓力測試**：模擬如果遇到像 2020 疫情崩盤那樣的 5% 黑天鵝機率，您的帳戶一天會蒸發多少錢。")
+        ### 2. 個股戰鬥卡片 (位於量化風控與盯盤中心)
+        在台/美股分頁中，每一檔股票都有專屬的數據卡片，請關注以下三個核心數據：
+        * **🚨 ATR 吊燈防守線 (Chandelier Exit) [您的絕對保命符]**：系統會動態追蹤您建倉以來的「最高價」，向下減去 N 倍的真實波動均值(ATR)。這是一條「只會跟著股價上升、絕不下降」的移動停利/停損線。
+          * 👉 **操作準則**：若今日股價跌破此防守線，卡片將亮起紅色警報 **「🚨 SELL ALL / 破線撤退」**。此時請關閉任何情緒，**無條件打開券商 APP 市價全數平倉！** 這是量化交易避開毀滅性熊市的最核心鐵律。
+        * **長線趨勢 (Trend)**：判斷 50MA 與 200MA 是否黃金交叉。
+          * 👉 **操作準則**：若顯示「🔴 空頭」，即使您該檔股票分配的資金不足，系統也會亮起「🟡 死叉暫停」，強迫您鎖住買進按鈕，避免左側接刀。
+        * **AI 終端戰術與指令**：系統會自動比對「您的設定目標權重」與「目前的實際市值佔比」。若差距過大，系統會給出精確的「🟢 BUY (需加碼幾股)」或「🔴 SELL (需減碼幾股)」。
+        """)
+
+    with st.expander("📍 第三階段：資金控管與進階阿爾法模型 (高階應用)"):
+        st.markdown("""
+        ### 1. 💰 智慧階梯式增量資金注水控制台
+        當您每個月發薪水，或有一筆新資金準備投入時使用：
+        * 在該分頁輸入您準備投入的現金（如：30,000 元）。
+        * 選擇您的注水戰略：「標準配置」(乖乖補齊不足的權重)、「右側加碼」(強者恆強，只買站上多頭均線的股票) 或「左側抄底」(只買 RSI<40 的錯殺股)。
+        * 系統會瞬間為您產出一張「採購清單」，直接告訴您哪一檔股票要買幾股，精準把錢花在刀口上。
+
+        ### 2. 🧬 機構級阿爾法模型 (Alpha Quants)
+        不要再靠直覺分配資金，讓科學來幫您：
+        * **🧠 馬可維茲效率前緣 (MVO)**：點擊執行後，電腦會跑 5000 次蒙地卡羅模擬，找出「風險最低、報酬期望值最高」的黃金權重。請參考 AI 算出的 Target (%) 來修正您的卡片設定。
+        * **⚔️ 曼斯菲爾德相對強弱 (RS)**：將您的庫存與大盤(TWII/GSPC)進行績效 PK。如果某檔股票的 RS 指數長年為負數 (🚨 嚴重落後)，請考慮砍掉這個拖油瓶，把資金轉入 RS 排名最前面的領頭羊。
+        * **🌪️ 歷史 VaR 壓力測試**：模擬如果明日發生 1% 機率的黑天鵝股災，您的帳戶「單日最大可能蒸發多少台幣」。若這個金額超過您晚上能安穩睡覺的極限，請立刻調降股票權重，轉入現金。
+
+        ### 3. 🤖 24H 守望者腳本 (Cron Bot)
+        網頁關掉就不會叫了怎麼辦？
+        * 進入此分頁，系統已為您客製化寫好了一支 Python 程式碼。
+        * 您只要把它下載下來，放到免費的 GitHub Actions 雲端主機上。它每天收盤後就會像一個無情的機器人，自動幫您巡邏所有股票有沒有跌破 ATR 停損線，並把報告直接發到您的 LINE 裡面！
+        """)
 
 # ==========================================
 # 🏠 1. 宏觀資產矩陣 (Dashboard)
@@ -696,7 +736,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
-    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總損益率 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總回報 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
