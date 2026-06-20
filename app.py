@@ -77,9 +77,6 @@ html, body, [class*="css"] { font-family: 'Inter', 'Segoe UI', sans-serif; color
 .badge-sell { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #fde8e8; color: #b91c1c; font-weight: 800; font-size: 0.8rem; border: 1px solid #f87171; }
 .badge-hold { display: inline-block; padding: 4px 10px; border-radius: 4px; background-color: #f1f5f9; color: #475569; font-weight: 800; font-size: 0.8rem; border: 1px solid #cbd5e1; }
 .action-box { background: #f8fafc; border: 1px solid #e2e8f0; border-left: 6px solid #0f172a; padding: 20px; border-radius: 8px; margin-top: 15px; margin-bottom: 25px; color: #0f172a !important; }
-.action-box h4, .action-box div, .action-box li { color: #0f172a !important; }
-.stNumberInput input { font-weight: 800 !important; color: #0f172a !important; font-size: 1.1rem !important;}
-.modebar { display: none !important; }
 hr { border-color: #e2e8f0; margin: 2rem 0; border-style: solid; border-width: 1px; }
 .stTabs [data-baseweb="tab-list"] { gap: 8px; border-bottom: 2px solid #cbd5e1; padding-bottom: 0px;}
 .stTabs [data-baseweb="tab"] { height: 48px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 24px; color: #64748b; font-weight: 700; border: none; font-size: 0.95rem;}
@@ -107,33 +104,6 @@ TECH_CONCENTRATION_TICKERS = ["2330", "2454", "2382", "3231", "6669", "3034", "2
 # ==========================================
 # 🛡️ 智慧混合式資料庫引擎 (Data Healer)
 # ==========================================
-DB_FILE = "portfolio_db.json"
-USE_FIREBASE = False
-
-try:
-    if "firebase" in st.secrets:
-        raw_db_url = st.secrets["firebase"].get("databaseURL", "")
-        clean_db_url = raw_db_url.replace("https://https://", "https://").strip()
-        if not clean_db_url.startswith("https://"): clean_db_url = "https://" + clean_db_url
-            
-        cred_dict = dict(st.secrets["firebase"])
-        cred_dict["private_key"] = cred_dict["private_key"].replace('\\n', '\n')
-        
-        need_init = True
-        if firebase_admin._apps:
-            app = firebase_admin.get_app()
-            if app.options.get('databaseURL') == clean_db_url: need_init = False
-            else: firebase_admin.delete_app(app)
-                
-        if need_init:
-            cred = credentials.Certificate(cred_dict)
-            firebase_admin.initialize_app(cred, {'databaseURL': clean_db_url})
-            
-        USE_FIREBASE = True
-except Exception as e:
-    st.sidebar.warning(f"⚠️ 雲端連線失敗，自動啟用「本機離線快取模式」。")
-    USE_FIREBASE = False
-
 @st.cache_data(show_spinner=False, ttl=60)
 def load_portfolio():
     default_data = {
@@ -160,6 +130,7 @@ def load_portfolio():
     if "tw_discount" not in data["settings"]: data["settings"]["tw_discount"] = 0.28
     if "us_fee" not in data["settings"]: data["settings"]["us_fee"] = 0.0
     if "schemes" not in data: data["schemes"] = default_data["schemes"]
+    
     for s_name in ["🎯 台股主力配置", "🎯 美股主力配置"]:
         if s_name not in data["schemes"]: data["schemes"][s_name] = default_data["schemes"][s_name]
         if "lots" not in data["schemes"][s_name]: data["schemes"][s_name]["lots"] = []
@@ -216,7 +187,7 @@ def smart_resolve_ticker(user_input, api_key=""):
                 if zh_name and "Yahoo" not in zh_name and zh_name != potential_tk:
                     return resolve_suffix(potential_tk), zh_name
     except: pass
-
+    
     try:
         r = requests.get(f"https://query2.finance.yahoo.com/v1/finance/search?q={requests.utils.quote(potential_tk)}&lang=zh-Hant-TW&region=TW", headers=yf_session.headers, timeout=3)
         if r.status_code == 200 and r.json().get('quotes'):
@@ -237,6 +208,7 @@ def get_leverage(ticker):
     if t.split('.')[0] in us_2x: return 2.0
     return 1.0
 
+@st.cache_data(show_spinner=False, ttl=600)
 def fetch_market_data(ticker):
     default_res = {
         "price": 1.0, "date": "即時報價", "ma50": 1.0, "ma200": 1.0, 
@@ -244,7 +216,7 @@ def fetch_market_data(ticker):
         "kd_k": 50.0, "atr": 0.0, "history_close": pd.Series(dtype=float), "full_df": None
     }
     if not ticker or ticker == "CASH": 
-        default_res["date"] = "最新匯率"
+        default_res["date"] = "法幣基準"
         return default_res
         
     try:
@@ -508,7 +480,7 @@ st.sidebar.markdown("---")
 if MY_API_KEY: genai.configure(api_key=MY_API_KEY)
 
 app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
-    "🏠 宏觀資產矩陣 (Dashboard)", 
+    "🏠 宏觀資Asset Matrix (Dashboard)", 
     "🇹🇼 台股主力量化倉位", 
     "🇺🇸 美股主力量化倉位", 
     "💸 現金流與稅務水庫", 
@@ -522,10 +494,11 @@ app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
 st.sidebar.markdown("---")
 
 # ==========================================
-# 📊 頂層全域分頁路由
+# ⚙️ 系統全域設定 (Settings)
 # ==========================================
 if app_mode == "⚙️ 系統全域設定 (Settings)":
     st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #334155 0%, #0f172a 100%); border-left-color: #94a3b8;'>⚙️ 系統全域參數與資料庫管裡 (Settings & Backup)</div>", unsafe_allow_html=True)
+    
     c_set1, c_set2 = st.columns(2)
     with c_set1.expander("🎯 戰略目標資產設定 (AUM Target)", expanded=True):
         cur_target_amt = db_data["global_goals"].get("target_amt", 20000000)
@@ -566,38 +539,94 @@ if app_mode == "⚙️ 系統全域設定 (Settings)":
                 st.rerun()
             except: st.error("檔案損毀。")
 
+# ==========================================
+# 📖 系統操作指南 (User Manual)
+# ==========================================
 elif app_mode == "📖 系統操作指南 (User Manual)":
-    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left-color: #64748b;'>📖 機構級量化操盤手實戰指南 (SOP)</div>", unsafe_allow_html=True)
-    st.info("💡 這不僅是一個記帳軟體，更是一套融合了華爾街「趨勢動能」與「量化風控」的操盤大腦。請遵循以下三大階段，建立您無懈可擊的交易紀律。")
-    with st.expander("📍 第一階段：庫存建立與資金成本對齊 (Data Input)", expanded=True):
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-left-color: #64748b;'>📖 機構級量化操盤手實戰指南 (Prop-Trader Playbook)</div>", unsafe_allow_html=True)
+    st.info("💡 歡迎來到您的專屬量化大腦。這套系統已將華爾街對沖基金的「趨勢動能」、「資金控管」與「風險模型」徹底黑盒化。請遵循以下五大章節，拔除主觀情緒，讓數學為您賺錢。")
+    
+    with st.expander("第一章：基礎建設與真實帳戶對齊 (Data Initialization)", expanded=True):
         st.markdown("""
         ### 1. 建立您的第一筆庫存
-        * **步驟**：進入左側導覽列 `🇹🇼 台股主力量化倉位` ➡️ 切換到 `📓 量化覆盤與日誌審判室` 分頁。
-        * **操作**：在快速登錄表單中填入代碼（如 2330 ）、股數、單價與建倉日期。
-        * **備註 (Memo)**：寫下真實買進理由，這有助於後續 AI 交易心理覆盤精準剖析情緒干擾。
-        ### 2. 券商 APP 利潤損益完美對齊
-        * **解決方案**：在盯盤中心最上方點開 **⚙️ 券商交易稅費與折讓率設定**。
-        * **操作**：輸入您的真实台股手續費折扣（如 2.8折請輸入 0.28）或美股單筆低消。系統將自動啟用淨損益（Net PnL）精算，全面扣除買賣雙向規費與證交稅，與對帳單完美同步。
+        量化模型需要歷史成本才能精算您的阿爾法(Alpha)。
+        * **操作動線**：進入左側導覽列 `🇹🇼 台股主力量化倉位` ➡️ 切換到 `📓 交易交割總帳與 AI 審判室` 分頁。
+        * **輸入格式**：在快速登錄表單中填入代碼（如 2330 ）、股數、單價與建倉日期。
+        * **心魔備註 (Memo)**：這是對決心魔的關鍵！請務必寫下真實買進理由（如：「看均線金叉買進」或「聽隔壁老王說的」）。未來交給 AI 覆盤時，它會冷酷地幫您算出「非理性交易佔比」。
+        
+        ### 2. 券商 APP 利潤損益完美對齊 (Gross vs Net PnL)
+        散戶記帳最痛恨的就是「軟體算出來賺錢，APP 打開卻少了一大截手續費」。
+        * **解決方案**：在 `📊 機構級量化風控與盯盤中心` 的最上方，點開 **⚙️ 券商交易稅費與折讓率設定**。
+        * **操作設定**：輸入您真實的台股券商手續費折扣（例如您的券商給您 2.8 折，請輸入 `0.28`）或美股單筆低消。
+        * **系統反應**：設定完畢後，系統將啟動**法人級雙重對齊**，在下方戰鬥卡片中顯示已徹底扣除買進/賣出雙向規費與證交稅的「真實實質保後淨損益 (Net PnL)」，保證與對帳單完美同步。
         """)
-    with st.expander("📍 第二階段：總經燈號與風控巡邏 (Dynamic Controls)"):
+
+    with st.expander("第二章：總經大局觀與風控閥門 (Macro & Wind Controls)"):
         st.markdown("""
-        ### 1. 總經三大紅綠燈 (控制風控閥值)
-        * **🏛 利差 (10Y-3M) [衰退吹哨者]**：美國公債利差若為負值 (🔴 倒掛警戒)，代表市場預期衰退。應禁止高槓桿現貨擴張，拉高防禦儲備。
-        * **📉 VIX 恐慌指數 [情緒溫度計]**：若 VIX > 25 (恐慌)，系統演算法會**強迫**將高波動槓桿部位建議 Target% 砍半。
-        * **🕸️ 市場寬度 (S&P500) [牛熊分界線]**：若亮起「🔴 系統性破線風險」，大盤中長線走空，系統將自動鎖定並拒絕左側超跌抄底。
-        ### 2. 高密度持倉動能矩陣 (Sparklines)
-        * **實戰操作**：盯盤中心最上方提供近 30 日微型 K 線走勢。您可以直接點擊 **「距停損(%)」** 欄位進行排序，一秒鐘揪出最逼近移動清倉邊緣的危險資產。
-        ### 3. 個股 Chandelier Exit 吊燈防禦線
-        * **操作準則**：系統根據建倉高點減去 ATR 波動算出的安全線。一旦股價跌破此線，卡片將亮起紅色清倉命令 **「🚨 SELL ALL / 破線撤退」**。看到此訊號時，請摒除人性，**無條件按市價平倉**，以保住波段最大戰果。
+        身為操盤手，每天打開系統第一眼要看的是左側邊欄的「三大紅綠燈」。它們決定了您今天踩油門與煞車的力度。
+
+        ### 1. 🏛 10Y-3M 利差 (Yield Spread) —— 經濟衰退吹哨者
+        * **這是什麼**：美國 10 年期公債殖利率減去 3 個月期殖利率的差額。正常情況下長天期利息應較高（正值）。
+        * **研判與行動**：若數值變為負數，系統會亮起「🔴 倒掛警戒」。這代表市場極度悲觀，通常是經濟衰退的前兆。此時應**嚴禁重壓高槓桿現貨擴張 (如 TQQQ, 正2 ETF)**，並將獲利部位轉入法幣保留款水庫。
+
+        ### 2. 📉 VIX 恐慌指數 —— 市場情緒溫度計
+        * **這是什麼**：衡量標普 500 未來 30 天的隱含波動率。
+        * **研判與行動**：數值低於 15 代表安定；若 VIX 大於 25 (恐慌)，系統的動態降載演算法會被觸發，**強迫將您所有「槓桿係數大於 2.0x」的資產目標權重直接砍半**（若 VIX>30 則直接歸零）。請無條件聽從系統產生之紅色 SELL 減碼指令單。
+
+        ### 3. 🕸️ 市場寬度 (Market Breadth) —— 真假牛市照妖鏡
+        * **這是什麼**：對比美股大盤(S&P 500)是否穩站於 200 日均線（牛熊分界線）之上。
+        * **研判與行動**：若亮起「🔴 系統性破線風險」，代表大多頭格局已被破壞（下跌家數多於上漲家數）。此時系統將自動鎖定並拒絕任何「左側抄底加碼」的建議。
         """)
-    with st.expander("📍 第三階段：增量金流注水與阿爾法計量模型 (Advanced Quants)"):
+
+    with st.expander("第三章：微觀動能與戰鬥卡片 (Micro Trends & Tactical Cards)"):
         st.markdown("""
-        ### 1. 💰 智慧階梯式增量資金注水
-        * 發薪日有新資金時，於注水台輸入注入金額，選擇「標準再平衡」、「右側加碼（金叉多頭）」或「左側抄底（低RSI）」，系統會自動將本金完美拆解為精確的配置採購單。
-        ### 2. 🧬 機構級阿爾法模型
-        * **馬可維茲組合最佳化 (MVO)**：透過 5000 次蒙地卡羅亂數模擬，推演期望值夏普比率（Sharpe Ratio）最高的黃金權重。可直接將 AI 求解權重填回 Target %。
-        * **曼斯菲爾德相對強弱 (RS)**：直接與大盤指數 PK。若 RS 長期為負（嚴重落後），應斷然執行劣汰留強。
-        * **歷史 VaR 黑天鵝測試**：精算明日在 99% 的極端極限情況下，帳戶單日最大可能回撤。用於調節全組合整體倉位曝險。
+        ### 1. 高密度持倉動能矩陣 (Sparklines Table)
+        法人沒有時間一張一張圖表點開看。在盯盤中心的最上方，系統將您所有持股的「近 30 日走勢」壓縮成了微型折線圖嵌在表格內。
+        * **🎯 實戰殺招**：點擊表頭的 **「距停損線(%)」** 欄位進行由小到大排序。您可以一秒鐘揪出目前距離死亡線最近的危險資產！
+
+        ### 2. 個股戰鬥卡片核心判讀
+        * **🚨 ATR 吊燈移動防守線 (Chandelier Exit)**
+            * **定義**：系統會自動追蹤您建倉以來的「最高價」，並向下減去 N 倍的「真實波動均值 (ATR)」。
+            * **特性**：這是一條只會跟著股價上升、絕不下降的移動停利/停損線。
+            * **SOP 行動**：若今日股價實體跌破此防禦線，卡片將亮起奪目的紅色警報 **「🚨 SELL ALL / 破防平倉退出」**。看到此訊號時，請摒除一切人性僥倖，**無條件按市價平倉清空該檔庫存**。這是量化交易避開毀滅性熊市的最核心鐵律。
+        
+        * **📉 乖離率 (BIAS) 與 RSI 動能**
+            * **乖離率 > +20%**：股價短線噴漲偏離年線過遠，隨時可能回檔修復。AI 戰術會建議「🚨 乖離過大」，您可適度減碼獲利了結。
+            * **RSI < 30**：代表被市場恐慌錯殺超跌。在多頭市場中，AI 戰術會顯示「🟢 逢低加碼點」。
+
+        * **🐢 1% 海龜風險規模限制 (Position Sizing)**
+            * 系統在建議買進時，會同步精算一組數字：「海龜1%規模限制」。這是告訴您：以目前這檔股票的震幅(ATR)，如果您只願意承受帳戶總資金 1% 的損失風險，您這把最多只能買這麼多股。**這能完美杜絕您重倉單筆爆倉的悲劇。**
+        """)
+
+    with st.expander("第四章：智慧資金注水與阿爾法模型 (Alpha Quants)"):
+        st.markdown("""
+        ### 1. 💰 智慧階梯式增量資金注水控制台
+        當您發薪水、有新資金入帳，或是賣出股票抱有滿手現金時：
+        1. 輸入預定投入的現款金額。
+        2. 選擇戰略模組：
+            * **⚖️ 標準配置再平衡**：乖乖補齊偏離目標權重最多的股票。
+            * **📈 右側順勢加碼**：強者恆強，系統將拒絕買進正在跌的股票，把資金全集中打在「站上多頭均線」的標的上，讓獲利奔跑。
+            * **📉 左側分批抄底**：逆勢操作，只買 RSI < 40 被嚴重錯殺的股票。
+        3. 系統會瞬間產出一張極度精確的「演算法自動化注水配置比例單」，您只需打開券商 APP 照著下單即可。
+
+        ### 2. 🧬 機構級阿爾法模型 (Alpha Quants)
+        不要再靠直覺分配資金，讓科學來說話：
+        * **🧠 馬可維茲效率前緣 (MVO)**：選擇資產池後點擊執行，電腦會跑 5000 次蒙地卡羅模擬（Monte Carlo），找出「風險最低、期望報酬最高」的黃金權重。請直接參考 AI 算出的 `AI 最佳化建議 Target (%)` 來修正您卡片中的目標設定。
+        * **⚔️ 曼斯菲爾德相對強弱 (RS)**：將您的庫存與大盤(TWII或GSPC)進行績效 PK。如果某檔股票的 RS 指數長年為負數 (顯示 🚨 嚴重落後)，請勇敢砍掉這個拖油瓶，把資金轉入 RS 排名為「🔥 遠超大盤」的領頭羊板塊。
+        * **🌪️ 歷史 VaR 壓力測試**：模擬明日若發生 1% 機率的黑天鵝股災，您的帳戶「單日最大可能蒸發多少台幣」。若您看到這個預估虧損數字會睡不著覺，代表您現在的槓桿開太大了，請立刻調降股票權重，轉入現金。
+        """)
+
+    with st.expander("第五章：自動化無頭守望者 (Cron Bot)"):
+        st.markdown("""
+        ### 讓系統 24 小時為您守夜
+        量化交易最大的痛點是：網頁關閉時，系統就停止運作了。如果半夜美股崩盤跌破 ATR 怎麼辦？
+        
+        * **解決方案**：
+            1. 進入 `🤖 24H 守望者腳本 (Cron Bot)` 分頁。
+            2. 系統已經根據您的庫存名單與 LINE Token，客製化寫好了一支 Python 獨立腳本 (`cron_bot.py`)。
+            3. 將該腳本下載後，部署至免費的雲端排程平台（如 GitHub Actions）。
+            4. 設定為每天收盤後（台股 14:30 / 美股早上 06:30）自動執行。
+        * **成效**：機器人會像一位無情的警衛，每天自動幫您巡邏所有股票有沒有跌破 ATR 停損線，或是 VIX 有沒有飆高，並將警報或平安報告直接發送到您的 LINE 裡面！
         """)
 
 elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
@@ -888,7 +917,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             if rebalance_orders: st.markdown(f"<div class='action-box'><h4 style='color:#b45309 !important; font-weight:900; margin-top:0; font-size:1.05rem;'>⚡ 演算法自動化指令單 (Balancing Execution Orders)</h4><ul style='margin-bottom:0; padding-left:20px;'>{''.join(rebalance_orders)}</ul></div>", unsafe_allow_html=True)
             else: st.markdown(f"<div class='action-box' style='background:#f0fdf4; border-color:#cbd5e1; border-left-color:#10b981;'><h4 style='color:#166534 !important; font-weight:900; margin-top:0; font-size:1.05rem;'>✅ 全組合現貨與槓桿曝險均完美收斂於安全容錯區間。</h4></div>", unsafe_allow_html=True)
 
-            # 渲染個股戰鬥卡片
             for item in current_view_data:
                 if item.get("init_shares") <= 0.001 and item.get("target_pct") <= 0: continue
                 mult = 1.0 if is_tw_mode else current_rate
@@ -899,7 +927,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 n_p = item.get("now_p", 0)
                 shares_qty = item.get('init_shares', 0)
                 stop_loss_price = item.get("max_since_buy", n_p) - (atr_multiplier * item.get("atr", 0.0))
-                is_trailing_stop = (n_p < stop_loss_price) and (item.get("ticker") != "CASH") and (shares_qty > 0)
+                is_trailing_stop = (n_p < stop_loss_price) and (item.get("ticker") != "CASH") and (item.get("init_shares") > 0)
                 dynamic_tgt_p = tgt_p if current_vix <= 25 else (tgt_p * 0.5 if current_vix <= 30 else 0.0) if item.get("leverage", 1.0) >= 2.0 else tgt_p
                 real_pct = (now_v / local_total_val * 100) if local_total_val > 0 else 0
                 clean_name = item.get("ticker", "").split('.')[0]
@@ -923,9 +951,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                     elif item.get("ma50", 0) < item.get("ma200", 0) and item.get("leverage", 1.0) >= 2.0: tactical_action = "<span style='color:#ef4444; font-weight:900;'>🛑 均線死叉避險</span>"
                     elif item.get("kd_k", 50.0) < 25 or item.get("rsi", 50.0) < 35: tactical_action = "<span style='color:#10b981; font-weight:900;'>🟢 逢低加碼點</span>"
                     
-                    # 💡 核心更新：補回庫存股數
                     c_card[0].markdown(f"<div class='ticker-display'>{clean_name}</div><div class='stock-name-display'>{STOCK_NAME_DICT.get(clean_name, clean_name)}</div><div class='price-display'>{'NTD' if is_tw_mode else 'USD'} {n_p:.2f}</div><div style='margin-top:8px; font-size:0.95rem; font-weight:800; color:#475569;'>庫存: <span style='color:#0f172a;'>{fmt_money(shares_qty)}</span> 股</div>", unsafe_allow_html=True)
-                    
                     c_card[1].markdown(f"<div class='data-label'>未平倉變現淨市值:</div><div class='data-value'>NTD {fmt_money(item.get('net_real_val', 0))}</div><div class='data-label' style='margin-top:8px;'>實質保後淨損益 (PnL):</div><div class='data-value' style='color:{item_pnl_color} !important;'>{item_pnl_sign}{fmt_money(item_pnl_val)} ({item_pnl_pct:.2f}%)</div>", unsafe_allow_html=True)
                     c_card[2].markdown(f"<div class='data-label'>中長線趨勢排列:</div><div>{trend_tag}</div><div class='data-label' style='margin-top:8px;'>ATR 吊燈移動防守線:</div><div class='data-value' style='color:{trail_color} !important;'>{stop_loss_price:.2f}</div>", unsafe_allow_html=True)
                     c_card[3].markdown(f"<div class='data-label'>基期年線乖離 (BIAS):</div><div class='data-value' style='color:#3b82f6 !important;'>{item.get('bias', 0):+.1f}%</div><div class='data-label' style='margin-top:8px;'>AI 即時終端戰術:</div><div style='font-size:0.95rem; font-weight:700;'>{tactical_action}</div>", unsafe_allow_html=True)
@@ -941,9 +967,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
 
                     diff_val = (local_total_val * (dynamic_tgt_p / 100.0)) - now_v
                     vix_warn_str = f" <span style='color:#ef4444;'>(VIX降載 ➡️ {dynamic_tgt_p}%)</span>" if dynamic_tgt_p != new_tgt else ""
-                    
-                    prog_color = "#10b981" if abs(real_pct - dynamic_tgt_p) <= rebalance_threshold else "#f59e0b"
-                    progress_html = f"<div style='margin-top:6px; margin-bottom:4px; font-size:0.75rem; color:#475569; font-weight:700;'>實際 {real_pct:.1f}% / 目標 {dynamic_tgt_p}%{vix_warn_str}</div><div style='width: 100%; background-color: #cbd5e1; border-radius: 99px; height: 5px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {prog_color}; height: 100%;'></div></div>"
+                    progress_html = f"<div style='margin-top:6px; margin-bottom:4px; font-size:0.75rem; color:#475569; font-weight:700;'>實際 {real_pct:.1f}% / 目標 {dynamic_tgt_p}%{vix_warn_str}</div><div style='width: 100%; background-color: #cbd5e1; border-radius: 99px; height: 5px; overflow:hidden;'><div style='width: {min(100, real_pct)}%; background-color: {\"#10b981\" if abs(real_pct - dynamic_tgt_p) <= rebalance_threshold else \"#f59e0b\"}; height: 100%;'></div></div>"
                     
                     if item.get("ticker") == "CASH":
                         unit = "元" if is_tw_mode else "美元"
@@ -955,15 +979,14 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                         risk_amount = local_total_val * 0.01
                         max_shares_1pct = int(risk_amount / (item.get("atr", 1) * mult)) if item.get("atr", 0) > 0 else 0
                         
-                        if is_trailing_stop: action_msg = f"<div style='margin-top:8px;'><span class='badge-sell' style='background:#b91c1c; color:white;'>🚨 SELL ALL</span> <b>{fmt_money(item.get('init_shares',0))} 股</b></div>"
+                        if is_trailing_stop: action_msg = f"<div style='margin-top:8px;'><span class='badge-sell' style='background:#b91c1c; color:white;'>🚨 SELL ALL</span> <b>{fmt_money(shares_qty)} 股</b></div>"
                         elif shares_diff > 0:
                             if item.get("leverage", 1.0) >= 2.0 and item.get("ma50", 0) < item.get("ma200", 0): action_msg = "<div style='margin-top:8px;'><span class='badge-hold'>🟡 死叉鎖定</span></div>"
                             else: action_msg = f"<div style='margin-top:8px;'><span class='badge-buy'>🟢 BUY</span> <b>{fmt_money(shares_diff)} 股</b><div style='font-size:0.7rem; color:#64748b; margin-top:2px;'>🐢 海龜1%規模限制: {fmt_money(max_shares_1pct)} 股</div></div>"
                         elif shares_diff < 0: action_msg = f"<div style='margin-top:8px;'><span class='badge-sell'>🔴 SELL</span> <b>{fmt_money(abs(shares_diff))} 股</b></div>"
                         else: action_msg = "<div style='margin-top:8px;'><span class='badge-hold'>配置完美</span></div>"
 
-                    card_bg = "#fffbeb" if abs(real_pct - dynamic_tgt_p) > rebalance_threshold else "#ffffff"
-                    st.markdown(f"<div class='pro-card' style='background-color:{card_bg} !important; padding:10px; margin-top:2px;'>{progress_html}{action_msg}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='pro-card' style='background-color:{\"#fffbeb\" if abs(real_pct - dynamic_tgt_p) > rebalance_threshold else \"#ffffff\"} !important; padding:10px; margin-top:2px;'>{progress_html}{action_msg}</div>", unsafe_allow_html=True)
 
                 if item.get("ticker") != "CASH":
                     with st.expander(f"📈 展開 {clean_name} 歷史量化 K 線與「動態停損線」連動軸"):
@@ -1054,8 +1077,7 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
                 eligible_items = []
                 for item in current_view_data:
                     ma50_v, ma200_v, rsi_val = item.get("ma50", 1), item.get("ma200", 1), item.get("rsi", 50)
-                    is_bear_cross = (ma50_v < ma200_v)
-                    if "右側" in inject_mode and is_bear_cross and item.get("ticker") != "CASH": continue
+                    if "右側" in inject_mode and ma50_v < ma200_v and item.get("ticker") != "CASH": continue
                     if "左側" in inject_mode and rsi_val >= 40 and item.get("ticker") != "CASH": continue
                     eligible_items.append(item)
                     
