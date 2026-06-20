@@ -736,7 +736,7 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     pnl_c_global = "#10b981" if cumulative_ret >= 0 else "#ef4444"
-    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總回報 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
+    g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {pnl_c_global};'><div class='data-label'>含息總損益率 (Total Return)</div><div class='ticker-display' style='color:{pnl_c_global} !important;'>{cumulative_ret:+.2f}%</div></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -1240,59 +1240,72 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
     # 💰 子分頁 3: 智慧注水
     with tab_inject:
         st.markdown("### 💰 智慧型增量資金金流加碼控制台")
-        add_cash = st.number_input("設定預定注水注入現款金額 (NTD)", min_value=0, value=0, step=10000, format="%d")
-        inject_mode = st.radio("注入資金模型戰術選擇：", ["⚖️ 標準配置再平衡", "📈 右側順勢加碼 (僅挹注金叉多頭)", "📉 左側分批抄底 (僅挹注 RSI<40)"], horizontal=True)
+        add_cash = st.number_input("設定預定注水注入現款金額 (NTD)", min_value=0, value=0, step=10000, format="%d", key=f"cash_input_{market_label}")
+        inject_mode = st.radio("注入資金模型戰術選擇：", ["⚖️ 標準配置再平衡", "📈 右側順勢加碼 (僅挹注金叉多頭)", "📉 左側分批抄底 (僅挹注 RSI<40)"], horizontal=True, key=f"mode_input_{market_label}")
         
         if add_cash > 0 and current_view_data:
             st.markdown("<div class='action-box'>", unsafe_allow_html=True)
             st.markdown("<h4 style='color:#0f172a !important; font-weight:900; margin-top:0;'>🎯 演算法自動化注水配置比例單：</h4>", unsafe_allow_html=True)
-            ideal_total_val = local_total_val + add_cash
-            buy_list = []
             
-            eligible_items = []
-            for item in current_view_data:
-                ma50_v, ma200_v, rsi_val = item.get("ma50", 1), item.get("ma200", 1), item.get("rsi", 50)
-                is_bear_cross = (ma50_v < ma200_v)
-                if "右側順勢" in inject_mode and is_bear_cross and item.get("ticker") != "CASH": continue
-                if "左側抄底" in inject_mode and rsi_val >= 40 and item.get("ticker") != "CASH": continue
-                eligible_items.append(item)
-                
-            if not eligible_items: st.write("無符合資格之現貨標的。")
+            # 💡 核心防呆：檢查使用者有沒有設定 Target %
+            global_tgt_sum = sum(item.get("target_pct", 0) for item in current_view_data if item.get("ticker") != "CASH")
+            if global_tgt_sum == 0:
+                st.warning("⚠️ **系統防呆攔截**：偵測到您尚未設定「目標權重 Target (%)」！\n\n請先至上方的個股戰鬥卡片最右側，為您的股票輸入期望的持倉百分比（例如輸入 30 代表 30%）。演算法必須要有目標比例，才能告訴您這筆錢該怎麼買。")
             else:
-                for item in eligible_items:
-                    tgt = item.get("target_pct", 0)
-                    lev = item.get("leverage", 1.0)
-                    dynamic_tgt_p = tgt
-                    if lev >= 2.0:
-                        if current_vix > 30.0: dynamic_tgt_p = 0.0
-                        elif current_vix > 25.0: dynamic_tgt_p = tgt * 0.5
-                    
-                    ideal_target_ntd = ideal_total_val * (dynamic_tgt_p / 100.0)
-                    shortfall_ntd = ideal_target_ntd - item.get("now_val_ntd", 0)
-                    ma50_v = item.get("ma50", 1)
-                    ma200_v = item.get("ma200", 1)
-                    is_bear_cross = (ma50_v < ma200_v)
-    
-                    if shortfall_ntd > 0:
-                        if item.get("ticker") == "CASH":
-                            buy_units = shortfall_ntd / (1.0 if is_tw_mode else current_rate)
-                            buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <span style='font-weight:900; width:120px; display:inline-block;'>保留資金部位</span>：建議存入 <b style='color:#0f172a;'>{fmt_money(buy_units)}</b> {'元' if is_tw_mode else '美元'}</li>")
-                        elif item.get("ticker", "").startswith("^"): 
-                            buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>📊 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker', '')}</span>：建議加碼 <b style='color:#0f172a;'>NTD {fmt_money(shortfall_ntd)}</b></li>")
-                        else:
-                            if lev >= 2.0 and is_bear_cross:
-                                buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker').split('.')[0]}</span>：應配 NTD {fmt_money(shortfall_ntd)}，<span class='badge-hold'>🟡 死叉暫緩</span> 轉入現金儲備。</li>")
-                            elif not market_breadth_bullish and lev >= 2.0:
-                                buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker').split('.')[0]}</span>：應配 NTD {fmt_money(shortfall_ntd)}，<span class='badge-hold'>⚠️ 大盤破線拒絕槓桿</span>。</li>")
-                            else:
-                                price_ntd = item.get("now_p", 1) if is_tw_mode else (item.get("now_p", 1) * current_rate)
-                                shares_to_buy = int(shortfall_ntd / price_ntd) if price_ntd > 0 else 0
-                                clean_name = item.get("ticker", "").split('.')[0]
-                                if shares_to_buy > 0: 
-                                    buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{clean_name}</span>：下達 <span class='badge-buy'>🟢 BUY TO OPEN</span> <span style='font-weight:900; color:#0f172a; margin-left:8px;'>{fmt_money(shares_to_buy)} 股</span> <span style='color:#64748b; font-size:0.95rem; margin-left:12px;'>(需 NTD {fmt_money(shares_to_buy * price_ntd)})</span></li>")
+                ideal_total_val = local_total_val + add_cash
+                buy_list = []
                 
-                if buy_list: st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{''.join(buy_list)}</ul>", unsafe_allow_html=True)
-                else: st.write("模型比例完美收斂。")
+                eligible_items = []
+                for item in current_view_data:
+                    ma50_v, ma200_v, rsi_val = item.get("ma50", 1), item.get("ma200", 1), item.get("rsi", 50)
+                    is_bear_cross = (ma50_v < ma200_v)
+                    if "右側順勢" in inject_mode and is_bear_cross and item.get("ticker") != "CASH": continue
+                    if "左側抄底" in inject_mode and rsi_val >= 40 and item.get("ticker") != "CASH": continue
+                    eligible_items.append(item)
+                    
+                total_eligible_tgt = sum(item.get("target_pct", 0) for item in eligible_items if item.get("ticker") != "CASH")
+                
+                if not eligible_items: 
+                    st.write("在您選擇的戰術條件下，目前無符合資格之標的。")
+                elif total_eligible_tgt == 0 and ("右側" in inject_mode or "左側" in inject_mode):
+                    st.warning("⚠️ **無加碼目標**：在您選擇的「順勢/抄底」條件下，篩選出來的股票您都將目標權重設為了 0。系統不會買進您不想持有的股票。")
+                else:
+                    for item in eligible_items:
+                        tgt = item.get("target_pct", 0)
+                        lev = item.get("leverage", 1.0)
+                        dynamic_tgt_p = tgt
+                        if lev >= 2.0:
+                            if current_vix > 30.0: dynamic_tgt_p = 0.0
+                            elif current_vix > 25.0: dynamic_tgt_p = tgt * 0.5
+                        
+                        ideal_target_ntd = ideal_total_val * (dynamic_tgt_p / 100.0)
+                        shortfall_ntd = ideal_target_ntd - item.get("now_val_ntd", 0)
+                        ma50_v = item.get("ma50", 1)
+                        ma200_v = item.get("ma200", 1)
+                        is_bear_cross = (ma50_v < ma200_v)
+        
+                        if shortfall_ntd > 0:
+                            if item.get("ticker") == "CASH":
+                                buy_units = shortfall_ntd / (1.0 if is_tw_mode else current_rate)
+                                buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>💵 <span style='font-weight:900; width:120px; display:inline-block;'>保留資金部位</span>：建議存入 <b style='color:#0f172a;'>{fmt_money(buy_units)}</b> {'元' if is_tw_mode else '美元'}</li>")
+                            elif item.get("ticker", "").startswith("^"): 
+                                buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>📊 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker', '')}</span>：建議加碼 <b style='color:#0f172a;'>NTD {fmt_money(shortfall_ntd)}</b></li>")
+                            else:
+                                if lev >= 2.0 and is_bear_cross:
+                                    buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker').split('.')[0]}</span>：應配 NTD {fmt_money(shortfall_ntd)}，<span class='badge-hold'>🟡 死叉暫緩</span> 轉入現金儲備。</li>")
+                                elif not market_breadth_bullish and lev >= 2.0:
+                                    buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{item.get('ticker').split('.')[0]}</span>：應配 NTD {fmt_money(shortfall_ntd)}，<span class='badge-hold'>⚠️ 大盤破線拒絕槓桿</span>。</li>")
+                                else:
+                                    price_ntd = item.get("now_p", 1) if is_tw_mode else (item.get("now_p", 1) * current_rate)
+                                    shares_to_buy = int(shortfall_ntd / price_ntd) if price_ntd > 0 else 0
+                                    clean_name = item.get("ticker", "").split('.')[0]
+                                    if shares_to_buy > 0: 
+                                        buy_list.append(f"<li style='margin-bottom:12px; font-size:1.15rem; border-bottom:1px solid #e2e8f0; padding-bottom:8px;'>🛒 <span style='font-weight:900; width:120px; display:inline-block;'>{clean_name}</span>：下達 <span class='badge-buy'>🟢 BUY TO OPEN</span> <span style='font-weight:900; color:#0f172a; margin-left:8px;'>{fmt_money(shares_to_buy)} 股</span> <span style='color:#64748b; font-size:0.95rem; margin-left:12px;'>(需 NTD {fmt_money(shares_to_buy * price_ntd)})</span></li>")
+                    
+                    if buy_list: 
+                        st.markdown(f"<ul style='list-style-type:none; padding-left:0;'>{''.join(buy_list)}</ul>", unsafe_allow_html=True)
+                    else: 
+                        st.info("💡 目前您的庫存佔比已完美達到您設定的 Target(%) 目標，或者在您選擇的戰術條件下（如順勢/抄底），沒有符合加碼標準的標的。資金建議暫時留存為現金儲備。")
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
