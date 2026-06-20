@@ -84,25 +84,64 @@ hr { border-color: #e2e8f0; margin: 2rem 0; border-style: solid; border-width: 1
 .stTabs [data-baseweb="tab-list"] { gap: 8px; border-bottom: 2px solid #cbd5e1; padding-bottom: 0px;}
 .stTabs [data-baseweb="tab"] { height: 48px; white-space: pre-wrap; background-color: transparent; border-radius: 8px 8px 0 0; padding: 0 24px; color: #64748b; font-weight: 700; border: none; font-size: 0.95rem;}
 .stTabs [aria-selected="true"] { background-color: #0f172a !important; color: white !important; }
+.chain-card { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
 </style>
 """, unsafe_allow_html=True)
 
-# 🚀 智慧代碼正名資料庫
+# 🚀 智慧代碼正名資料庫 (擴展 AI 供應鏈清單)
 STOCK_NAME_DICT = {
     "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2382": "廣達", "2308": "台達電",
     "2881": "富邦金", "2891": "中信金", "2412": "中華電", "2603": "長榮", "3231": "緯創",
     "6669": "緯穎", "2303": "聯電", "3711": "日月光投控", "6285": "啟碁", "2344": "華邦電", 
     "2337": "旺宏", "3034": "聯詠", "2379": "瑞昱", "5498": "凱崴", "6548": "長科*", "8070": "長華*",
+    "3443": "創意", "3661": "世芯-KY", "3131": "弘塑", "6187": "萬潤", "3037": "欣興", "3189": "景碩",
+    "6239": "旺矽", "6515": "穎崴", "3363": "上詮", "4979": "華星光", "3081": "聯亞", "2345": "智邦",
+    "2383": "台光電", "6274": "台燿", "6213": "聯茂", "2368": "金像電", "6138": "茂達", "3017": "奇鋐",
+    "3324": "雙鴻", "3653": "健策", "8210": "勤誠", "6117": "迎廣", "3665": "貿聯-KY", "3689": "湧德",
     "0050": "元大台灣50", "006208": "富邦台50", "0052": "富邦科技", "00881": "富邦台灣半導體", 
     "0056": "元大高股息", "00878": "國泰永續高股息", "00919": "群益台灣精選高息", 
     "00929": "復華台灣科技優息", "00713": "元大台灣高息低波", "00915": "凱基優選高股息30", 
     "00918": "大華優利高填息30", "00939": "統一台灣高息動能", "00940": "元大台灣價值高息",
     "00631L": "元大台灣50正2", "00670L": "富邦NASDAQ正2", "00687B": "國泰20年美債", "00937B": "群益ESG投等債20+",
-    "AAPL": "蘋果", "MSFT": "微軟", "NVDA": "輝達", "TSLA": "特斯拉", "AMD": "超微", 
+    "AAPL": "蘋果", "MSFT": "微軟", "NVDA": "輝達", "TSLA": "特斯拉", "AMD": "超微", "SMCI": "美超微",
     "QQQ": "納斯達克100", "VTI": "全美股市", "SCHD": "美國紅利", "VOO": "標普500", 
     "TQQQ": "納斯達克3倍多", "QLD": "納斯達克2倍多", "SOXL": "半導體3倍多"
 }
 TECH_CONCENTRATION_TICKERS = ["2330", "2454", "2382", "3231", "6669", "3034", "2379", "0052", "00881", "AAPL", "MSFT", "NVDA", "AMD", "QQQ", "TQQQ", "SOXL", "QLD"]
+
+# 🚀 AI 產業鏈戰略資料庫
+AI_CHAIN_DB = {
+    "1. 晶片架構與特種材料 (核心算力)": {
+        "上游 (ASIC/核心設計與 IP)": ["2454", "3443", "3661"],
+        "中游 (高階代工與先進製程)": ["2330"],
+        "下游 (特製加速卡與模組)": ["NVDA", "AMD", "SMCI"]
+    },
+    "2. HBM & 晶片堆疊先進封裝 (突破傳輸瓶頸)": {
+        "上游 (HBM與封裝材料)": ["MU"], # Micron for context
+        "中游 (CoWoS先進封裝與設備)": ["3711", "3131", "6187"],
+        "下游 (先進封裝載板/板卡)": ["3037", "3189"]
+    },
+    "3. 先進光學傳輸 (CPO / 矽光子)": {
+        "上游 (光學晶片設計與探針卡)": ["6239", "6515"],
+        "中游 (共同封裝光學與元件)": ["2330", "3363"],
+        "下游 (光收發模組與高階交換器)": ["4979", "3081", "2345"]
+    },
+    "4. AI 超高層背板 (PCB/CCL)": {
+        "上游 (超低損耗銅箔基板 CCL)": ["2383", "6274", "6213"],
+        "中游 (高階多層主板與製程)": ["2368", "3037"],
+        "下游 (伺服器基板與整機組裝)": ["2382", "3231", "6669"]
+    },
+    "5. 浸沒式與液冷散熱系統 (剛性需求)": {
+        "上游 (IC控制、感測與冷卻液)": ["6138"],
+        "中游 (水冷板/CDU/快接頭)": ["3017", "3324", "3653"],
+        "下游 (機櫃與整機散熱整合)": ["8210", "2382", "6117"]
+    },
+    "6. 超高速網路通訊設備 (叢集橋樑)": {
+        "上游 (網路處理器與轉發晶片)": ["2379", "MRVL"],
+        "中游 (高速傳輸介面與連接器)": ["3665", "3689"],
+        "下游 (機架式交換器與網通設備)": ["2345", "6285"]
+    }
+}
 
 # ==========================================
 # 🛡️ 智慧混合式資料庫引擎 (Data Healer)
@@ -513,6 +552,7 @@ app_mode = st.sidebar.radio("系統導覽 (Modules)：", [
     "🏠 宏觀資產矩陣 (Dashboard)", 
     "🇹🇼 台股主力量化倉位", 
     "🇺🇸 美股主力量化倉位", 
+    "🔗 AI 產業鏈戰略矩陣",
     "💸 現金流與稅務水庫", 
     "🧪 戰略回測實驗室", 
     "🧬 機構級阿爾法模型 (Alpha Quants)",
@@ -729,7 +769,6 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
     g2.markdown(f"<div class='kpi-card' style='border-top: 5px solid #ef4444;'><div class='data-label'>資產缺口 (Capital Shortfall)</div><div class='ticker-display'>NTD {fmt_money(shortfall)}</div></div>", unsafe_allow_html=True)
     g3.markdown(f"<div class='kpi-card' style='border-top: 5px solid #10b981;'><div class='data-label'>隱含要求回報率 (Req. CAGR)</div><div class='ticker-display'>{req_cagr:.2f}%</div></div>", unsafe_allow_html=True)
     
-    # 💡 淨空 f-string 變數區塊
     global_pnl_color = "#10b981" if cumulative_ret >= 0 else "#ef4444"
     global_pnl_sign = "+" if cumulative_ret >= 0 else ""
     g4.markdown(f"<div class='kpi-card' style='border-top: 5px solid {global_pnl_color};'><div class='data-label'>含息總報酬率 (Total Return)</div><div class='ticker-display' style='color:{global_pnl_color} !important;'>{global_pnl_sign}{cumulative_ret:.2f}%</div></div>", unsafe_allow_html=True)
@@ -746,7 +785,6 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
             st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False})
         else: st.info("暫無有效淨持倉數據。")
     with d_col2:
-        # 💡 淨空 f-string 變數區塊
         hist_pnl_color = "#10b981" if global_realized_pnl >= 0 else "#ef4444"
         hist_pnl_sign = "+" if global_realized_pnl >= 0 else ""
         
@@ -793,6 +831,51 @@ elif app_mode == "🏠 宏觀資產矩陣 (Dashboard)":
         fig_eq.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10), yaxis_title=y_title, xaxis_title="", hovermode="x unified")
         st.plotly_chart(fig_eq, use_container_width=True, config={'displayModeBar': False})
 
+elif app_mode == "🔗 AI 產業鏈戰略矩陣":
+    st.markdown("<div class='market-header global-market' style='background: linear-gradient(135deg, #0f172a 0%, #312e81 100%); border-left-color: #f59e0b;'>🔗 AI 產業鏈戰略矩陣 (Sector Heatmap)</div>", unsafe_allow_html=True)
+    st.info("💡 **實戰運用指南**：選擇您感興趣的 AI 題材。系統將即時拉取該題材上、中、下游關聯股票的市場數據。請關注亮起「🟢 多頭」且 RSI 尚未過熱的標的，作為換股或加碼的口袋名單。")
+    
+    selected_theme = st.selectbox("請選擇 AI 核心戰略題材：", list(AI_CHAIN_DB.keys()))
+    
+    if selected_theme:
+        st.markdown(f"### 🌐 {selected_theme.split(' ')[1] if len(selected_theme.split(' '))>1 else selected_theme} 供應鏈掃描")
+        theme_data = AI_CHAIN_DB[selected_theme]
+        
+        c_up, c_mid, c_down = st.columns(3)
+        cols_ref = [c_up, c_mid, c_down]
+        
+        for idx, (stage_name, tickers) in enumerate(theme_data.items()):
+            with cols_ref[idx]:
+                st.markdown(f"<div style='background:#f1f5f9; padding:10px; border-radius:8px; text-align:center; font-weight:800; color:#0f172a; margin-bottom:12px;'>{stage_name}</div>", unsafe_allow_html=True)
+                for tk in tickers:
+                    if tk == "NVDA" or tk == "AMD" or tk == "SMCI" or tk == "MU" or tk == "MRVL":
+                        tk_fetch = tk
+                    else:
+                        tk_fetch, _ = smart_resolve_ticker(tk, MY_API_KEY)
+                    
+                    if tk_fetch:
+                        m_data = fetch_market_data(tk_fetch)
+                        cur_p = m_data.get("price", 0)
+                        ma50_v = m_data.get("ma50", 1)
+                        ma200_v = m_data.get("ma200", 1)
+                        rsi_v = m_data.get("rsi", 50)
+                        
+                        trend_color = "#10b981" if ma50_v >= ma200_v else "#ef4444"
+                        trend_text = "🟢 多頭" if ma50_v >= ma200_v else "🔴 空頭"
+                        
+                        rsi_color = "#f59e0b" if rsi_v > 70 else "#10b981" if rsi_v < 30 else "#64748b"
+                        
+                        st.markdown(f"""
+                        <div class='chain-card' style='border-left: 5px solid {trend_color};'>
+                            <div style='font-size:1.2rem; font-weight:900; color:#0f172a;'>{tk.split('.')[0]} {STOCK_NAME_DICT.get(tk.split('.')[0], tk)}</div>
+                            <div style='font-size:1.1rem; font-weight:800; color:#475569; margin-top:4px;'>{cur_p:.2f}</div>
+                            <div style='display:flex; justify-content:space-between; margin-top:10px; font-size:0.85rem; font-weight:700;'>
+                                <span>趨勢: <span style='color:{trend_color};'>{trend_text}</span></span>
+                                <span>RSI: <span style='color:{rsi_color};'>{rsi_v:.1f}</span></span>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+        
 elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量化倉位"]:
     is_tw_mode = (app_mode == "🇹🇼 台股主力量化倉位")
     market_label = "台股" if is_tw_mode else "美股"
@@ -954,7 +1037,6 @@ elif app_mode in ["🇹🇼 台股主力量化倉位", "🇺🇸 美股主力量
             if rebalance_orders: st.markdown(f"<div class='action-box'><h4 style='color:#b45309 !important; font-weight:900; margin-top:0; font-size:1.05rem;'>⚡ 演算法自動化指令單 (Balancing Execution Orders)</h4><ul style='margin-bottom:0; padding-left:20px;'>{''.join(rebalance_orders)}</ul></div>", unsafe_allow_html=True)
             else: st.markdown(f"<div class='action-box' style='background:#f0fdf4; border-color:#cbd5e1; border-left-color:#10b981;'><h4 style='color:#166534 !important; font-weight:900; margin-top:0; font-size:1.05rem;'>✅ 全組合現貨與槓桿曝險均完美收斂於安全容錯區間。</h4></div>", unsafe_allow_html=True)
 
-            # 💡 淨空渲染卡片時的 f-string 引號衝突
             for item in current_view_data:
                 if item.get("init_shares") <= 0.001 and item.get("target_pct") <= 0: continue
                 mult = 1.0 if is_tw_mode else current_rate
